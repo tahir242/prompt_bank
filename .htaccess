@@ -1,0 +1,31 @@
+# Enable rewrite engine
+RewriteEngine On
+
+# Prevent directory listing
+Options -Indexes
+
+# Protect database file
+<Files "prompts.db">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Protect sensitive files
+<FilesMatch "\.(db|ini|log)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# PHP settings
+<IfModule mod_php7.c>
+    php_value session.cookie_httponly 1
+    php_value session.cookie_secure 0
+    php_value session.use_strict_mode 1
+</IfModule>

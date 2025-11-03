@@ -1,0 +1,38 @@
+# Database files
+database/prompts.db
+database/prompts.db-shm
+database/prompts.db-wal
+*.db
+*.db-shm
+*.db-wal
+
+# Environment files
+.env
+config.local.php
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+cache/
+
+# Node modules (if any)
+node_modules/
+
+# Composer vendor (if any)
+vendor/
