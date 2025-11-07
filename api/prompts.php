@@ -9,16 +9,31 @@ $method = $_SERVER['REQUEST_METHOD'];
 if ($method === 'GET') {
     if (isset($_GET['id'])) {
         // Get single prompt with details
+        $promptId = $_GET['id'];
+        
+        // Check access using new visibility/sharing system
+        $access = canAccessPrompt($_SESSION['user_id'], $promptId);
+        if (!$access) {
+            jsonResponse(['error' => 'Forbidden: You do not have access to this prompt'], 403);
+        }
+        
         $stmt = $db->prepare("
-            SELECT p.*, c.name as category_name 
+            SELECT p.*, c.name as category_name, u.username as owner_username, u.full_name as owner_full_name,
+                   t.name as team_name
             FROM prompts p 
             LEFT JOIN categories c ON p.category_id = c.id 
+            LEFT JOIN users u ON p.user_id = u.id
+            LEFT JOIN teams t ON p.team_id = t.id
             WHERE p.id = ? AND p.is_archived = 0
         ");
-        $stmt->execute([$_GET['id']]);
+        $stmt->execute([$promptId]);
         $prompt = $stmt->fetch();
         
         if ($prompt) {
+            // Add access information
+            $prompt['user_access_level'] = $access['access_level'];
+            $prompt['user_access_reason'] = $access['reason'];
+            
             // Get version history
             $versionStmt = $db->prepare("
                 SELECT pv.*, u.username 
@@ -27,27 +42,56 @@ if ($method === 'GET') {
                 WHERE pv.prompt_id = ? 
                 ORDER BY pv.version_number DESC
             ");
-            $versionStmt->execute([$_GET['id']]);
+            $versionStmt->execute([$promptId]);
             $prompt['versions'] = $versionStmt->fetchAll();
+            
+            // Get shares (if user is owner or has edit access)
+            if ($access['reason'] === 'owner' || $access['access_level'] === 'edit') {
+                $prompt['shares'] = getPromptShares($promptId);
+            }
             
             jsonResponse($prompt);
         } else {
             jsonResponse(['error' => 'Prompt not found'], 404);
         }
     } else {
-        // List all prompts
+        // List all accessible prompts based on visibility and shares
         $search = $_GET['search'] ?? '';
         $category = $_GET['category'] ?? '';
+        $visibility = $_GET['visibility'] ?? ''; // Filter by visibility
         
+        $userId = $_SESSION['user_id'];
+        $userRole = getUserRole($userId);
+        $teamId = $userRole['team_id'] ?? null;
+        $isAdmin = $userRole['role_name'] === 'Admin';
+        
+        // Build query to get accessible prompts
         $sql = "
-            SELECT p.*, c.name as category_name,
-                   (SELECT MAX(version_number) FROM prompt_versions WHERE prompt_id = p.id) as current_version
+            SELECT DISTINCT p.*, c.name as category_name, u.username as owner_username,
+                   (SELECT MAX(version_number) FROM prompt_versions WHERE prompt_id = p.id) as current_version,
+                   CASE 
+                       WHEN p.user_id = ? THEN 'owner'
+                       WHEN p.visibility = 'public' THEN 'public'
+                       WHEN p.visibility = 'team' AND p.team_id = ? THEN 'team'
+                       WHEN EXISTS (SELECT 1 FROM prompt_shares WHERE prompt_id = p.id AND shared_with_user_id = ?) THEN 'shared'
+                       WHEN EXISTS (SELECT 1 FROM prompt_shares WHERE prompt_id = p.id AND shared_with_team_id = ?) THEN 'team_shared'
+                       ELSE 'none'
+                   END as access_reason
             FROM prompts p 
             LEFT JOIN categories c ON p.category_id = c.id 
+            LEFT JOIN users u ON p.user_id = u.id
             WHERE p.is_archived = 0
+            AND (
+                p.user_id = ?  -- User's own prompts
+                OR ? = 1  -- Admin sees all
+                OR p.visibility = 'public'  -- Public prompts
+                OR (p.visibility = 'team' AND p.team_id = ?)  -- Team prompts
+                OR EXISTS (SELECT 1 FROM prompt_shares WHERE prompt_id = p.id AND shared_with_user_id = ?)  -- Direct shares
+                OR EXISTS (SELECT 1 FROM prompt_shares WHERE prompt_id = p.id AND shared_with_team_id = ?)  -- Team shares
+            )
         ";
         
-        $params = [];
+        $params = [$userId, $teamId, $userId, $teamId, $userId, $isAdmin ? 1 : 0, $teamId, $userId, $teamId];
         
         if ($search) {
             $sql .= " AND (p.title LIKE ? OR p.content LIKE ?)";
@@ -58,6 +102,11 @@ if ($method === 'GET') {
         if ($category) {
             $sql .= " AND p.category_id = ?";
             $params[] = $category;
+        }
+        
+        if ($visibility) {
+            $sql .= " AND p.visibility = ?";
+            $params[] = $visibility;
         }
         
         $sql .= " ORDER BY p.updated_at DESC";
@@ -82,9 +131,22 @@ if ($method === 'POST') {
     $title = $input['title'] ?? '';
     $content = $input['content'] ?? '';
     $categoryId = $input['category_id'] ?? null;
+    $visibility = $input['visibility'] ?? 'private';
+    $allowAnonymous = $input['allow_anonymous'] ?? false;
+    $teamAccessLevel = $input['team_access_level'] ?? 'view';
     
     if (empty($title) || empty($content)) {
         jsonResponse(['error' => 'Title and content are required'], 400);
+    }
+    
+    // Validate visibility
+    if (!in_array($visibility, ['private', 'team', 'public'])) {
+        jsonResponse(['error' => 'Visibility must be private, team, or public'], 400);
+    }
+    
+    // Validate team_access_level
+    if (!in_array($teamAccessLevel, ['view', 'edit'])) {
+        jsonResponse(['error' => 'Team access level must be view or edit'], 400);
     }
     
     try {
@@ -94,12 +156,12 @@ if ($method === 'POST') {
         
         $db->beginTransaction();
         
-        // Insert prompt with user_id and team_id
+        // Insert prompt with visibility settings
         $stmt = $db->prepare("
-            INSERT INTO prompts (title, content, category_id, user_id, team_id, created_at, updated_at) 
-            VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            INSERT INTO prompts (title, content, category_id, user_id, team_id, visibility, allow_anonymous, team_access_level, created_at, updated_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         ");
-        $stmt->execute([$title, $content, $categoryId, $_SESSION['user_id'], $teamId]);
+        $stmt->execute([$title, $content, $categoryId, $_SESSION['user_id'], $teamId, $visibility, $allowAnonymous ? 1 : 0, $teamAccessLevel]);
         $promptId = $db->lastInsertId();
         
         // Create initial version
@@ -108,6 +170,9 @@ if ($method === 'POST') {
             VALUES (?, 1, ?, ?, datetime('now'))
         ");
         $versionStmt->execute([$promptId, $content, $_SESSION['user_id']]);
+        
+        // Log audit event
+        logAudit($_SESSION['user_id'], 'prompt_created', "Created prompt: $title (ID: $promptId, visibility: $visibility)");
         
         $db->commit();
         
@@ -130,27 +195,51 @@ if ($method === 'PUT') {
     $title = $input['title'] ?? '';
     $content = $input['content'] ?? '';
     $categoryId = $input['category_id'] ?? null;
+    $visibility = $input['visibility'] ?? null;
+    $allowAnonymous = $input['allow_anonymous'] ?? null;
+    $teamAccessLevel = $input['team_access_level'] ?? null;
     
     if (!$id || empty($title) || empty($content)) {
         jsonResponse(['error' => 'ID, title, and content are required'], 400);
     }
     
+    // Validate visibility if provided
+    if ($visibility !== null && !in_array($visibility, ['private', 'team', 'public'])) {
+        jsonResponse(['error' => 'Visibility must be private, team, or public'], 400);
+    }
+    
+    // Validate team_access_level if provided
+    if ($teamAccessLevel !== null && !in_array($teamAccessLevel, ['view', 'edit'])) {
+        jsonResponse(['error' => 'Team access level must be view or edit'], 400);
+    }
+    
     try {
-        // Check if user can access this prompt (checks role + team permissions)
-        if (!canAccessPrompt($_SESSION['user_id'], $id)) {
-            jsonResponse(['error' => 'Forbidden: You do not have permission to edit this prompt'], 403);
+        // Check if user can access this prompt using new visibility/sharing system
+        $access = canAccessPrompt($_SESSION['user_id'], $id);
+        if (!$access) {
+            jsonResponse(['error' => 'Forbidden: You do not have access to this prompt'], 403);
         }
         
-        // Check edit permission (edit_team_prompt for editors, or full access for admin)
-        $userRole = getUserRole($_SESSION['user_id']);
-        $isAdmin = $userRole['role_name'] === 'Admin';
-        $canEdit = $isAdmin || hasPermission($_SESSION['user_id'], 'edit_team_prompt');
+        // Only users with edit access can edit
+        if ($access['access_level'] !== 'edit') {
+            jsonResponse(['error' => 'Forbidden: You only have view access to this prompt'], 403);
+        }
         
-        if (!$canEdit) {
-            jsonResponse(['error' => 'Forbidden: You do not have permission to edit prompts'], 403);
+        // Only owner can change visibility settings
+        if (($visibility !== null || $allowAnonymous !== null || $teamAccessLevel !== null) && $access['reason'] !== 'owner') {
+            jsonResponse(['error' => 'Forbidden: Only the owner can change visibility settings'], 403);
         }
         
         $db->beginTransaction();
+        
+        // Get current prompt data
+        $currentStmt = $db->prepare("SELECT * FROM prompts WHERE id = ? AND is_archived = 0");
+        $currentStmt->execute([$id]);
+        $currentPrompt = $currentStmt->fetch();
+        
+        if (!$currentPrompt) {
+            jsonResponse(['error' => 'Prompt not found'], 404);
+        }
         
         // Get current version number
         $versionStmt = $db->prepare("
@@ -162,13 +251,34 @@ if ($method === 'PUT') {
         $versionResult = $versionStmt->fetch();
         $nextVersion = ($versionResult['max_version'] ?? 0) + 1;
         
+        // Build update query dynamically
+        $updates = ['title = ?', 'content = ?', 'category_id = ?', 'updated_at = datetime(\'now\')'];
+        $updateParams = [$title, $content, $categoryId];
+        
+        if ($visibility !== null) {
+            $updates[] = 'visibility = ?';
+            $updateParams[] = $visibility;
+        }
+        
+        if ($allowAnonymous !== null) {
+            $updates[] = 'allow_anonymous = ?';
+            $updateParams[] = $allowAnonymous ? 1 : 0;
+        }
+        
+        if ($teamAccessLevel !== null) {
+            $updates[] = 'team_access_level = ?';
+            $updateParams[] = $teamAccessLevel;
+        }
+        
+        $updateParams[] = $id;
+        
         // Update prompt
         $stmt = $db->prepare("
             UPDATE prompts 
-            SET title = ?, content = ?, category_id = ?, updated_at = datetime('now') 
+            SET " . implode(', ', $updates) . "
             WHERE id = ? AND is_archived = 0
         ");
-        $stmt->execute([$title, $content, $categoryId, $id]);
+        $stmt->execute($updateParams);
         
         // Create new version
         $versionStmt = $db->prepare("
@@ -176,6 +286,9 @@ if ($method === 'PUT') {
             VALUES (?, ?, ?, ?, datetime('now'))
         ");
         $versionStmt->execute([$id, $nextVersion, $content, $_SESSION['user_id']]);
+        
+        // Log audit event
+        logAudit($_SESSION['user_id'], 'prompt_updated', "Updated prompt: $title (ID: $id)");
         
         $db->commit();
         
@@ -198,27 +311,35 @@ if ($method === 'DELETE') {
     }
     
     try {
-        // Check permissions: Admins can delete any prompt, Editors can delete team prompts
-        $userRole = getUserRole($_SESSION['user_id']);
-        $isAdmin = $userRole['role_name'] === 'Admin';
-        
-        if ($isAdmin) {
-            // Admin can delete anything
-            $stmt = $db->prepare("UPDATE prompts SET is_archived = 1 WHERE id = ?");
-            $stmt->execute([$id]);
-        } else {
-            // Editors can only delete team prompts they have access to
-            if (!hasPermission($_SESSION['user_id'], 'delete_team_prompt')) {
-                jsonResponse(['error' => 'Forbidden: You do not have permission to delete prompts'], 403);
-            }
-            
-            if (!canAccessPrompt($_SESSION['user_id'], $id)) {
-                jsonResponse(['error' => 'Forbidden: You can only delete prompts from your team'], 403);
-            }
-            
-            $stmt = $db->prepare("UPDATE prompts SET is_archived = 1 WHERE id = ?");
-            $stmt->execute([$id]);
+        // Check if user can access this prompt
+        $access = canAccessPrompt($_SESSION['user_id'], $id);
+        if (!$access) {
+            jsonResponse(['error' => 'Forbidden: You do not have access to this prompt'], 403);
         }
+        
+        // Only the owner can delete a prompt
+        if ($access['reason'] !== 'owner') {
+            jsonResponse(['error' => 'Forbidden: Only the owner can delete this prompt'], 403);
+        }
+        
+        // Get prompt title for audit log
+        $stmt = $db->prepare("SELECT title FROM prompts WHERE id = ? AND is_archived = 0");
+        $stmt->execute([$id]);
+        $prompt = $stmt->fetch();
+        
+        if (!$prompt) {
+            jsonResponse(['error' => 'Prompt not found'], 404);
+        }
+        
+        // Soft delete the prompt
+        $stmt = $db->prepare("
+            UPDATE prompts 
+            SET is_archived = 1, updated_at = datetime('now') 
+            WHERE id = ?
+        ");
+        $stmt->execute([$id]);
+        
+        logAudit($_SESSION['user_id'], 'prompt_deleted', "Deleted prompt: {$prompt['title']} (ID: $id)");
         
         jsonResponse([
             'success' => true,
