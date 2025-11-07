@@ -11,6 +11,7 @@ database/prompts.db-wal
 config.local.php
 .github
 plan/
+tests/
 # IDE files
 .vscode/
 .idea/
