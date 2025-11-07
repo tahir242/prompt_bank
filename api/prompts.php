@@ -72,6 +72,11 @@ if ($method === 'GET') {
 
 // POST - Create new prompt
 if ($method === 'POST') {
+    // Check create_prompt permission
+    if (!hasPermission($_SESSION['user_id'], 'create_prompt')) {
+        jsonResponse(['error' => 'Forbidden: You do not have permission to create prompts'], 403);
+    }
+    
     $input = json_decode(file_get_contents('php://input'), true);
     
     $title = $input['title'] ?? '';
@@ -131,9 +136,18 @@ if ($method === 'PUT') {
     }
     
     try {
-        // Check if user can access this prompt
+        // Check if user can access this prompt (checks role + team permissions)
         if (!canAccessPrompt($_SESSION['user_id'], $id)) {
             jsonResponse(['error' => 'Forbidden: You do not have permission to edit this prompt'], 403);
+        }
+        
+        // Check edit permission (edit_team_prompt for editors, or full access for admin)
+        $userRole = getUserRole($_SESSION['user_id']);
+        $isAdmin = $userRole['role_name'] === 'Admin';
+        $canEdit = $isAdmin || hasPermission($_SESSION['user_id'], 'edit_team_prompt');
+        
+        if (!$canEdit) {
+            jsonResponse(['error' => 'Forbidden: You do not have permission to edit prompts'], 403);
         }
         
         $db->beginTransaction();
@@ -175,7 +189,7 @@ if ($method === 'PUT') {
     }
 }
 
-// DELETE - Soft delete (archive) prompt (Admin only for now)
+// DELETE - Soft delete (archive) prompt
 if ($method === 'DELETE') {
     $id = $_GET['id'] ?? null;
     
@@ -184,14 +198,27 @@ if ($method === 'DELETE') {
     }
     
     try {
-        // Only Admins can delete prompts for now (can be expanded later)
+        // Check permissions: Admins can delete any prompt, Editors can delete team prompts
         $userRole = getUserRole($_SESSION['user_id']);
-        if ($userRole['role_name'] !== 'Admin') {
-            jsonResponse(['error' => 'Forbidden: Only Admins can delete prompts'], 403);
-        }
+        $isAdmin = $userRole['role_name'] === 'Admin';
         
-        $stmt = $db->prepare("UPDATE prompts SET is_archived = 1 WHERE id = ?");
-        $stmt->execute([$id]);
+        if ($isAdmin) {
+            // Admin can delete anything
+            $stmt = $db->prepare("UPDATE prompts SET is_archived = 1 WHERE id = ?");
+            $stmt->execute([$id]);
+        } else {
+            // Editors can only delete team prompts they have access to
+            if (!hasPermission($_SESSION['user_id'], 'delete_team_prompt')) {
+                jsonResponse(['error' => 'Forbidden: You do not have permission to delete prompts'], 403);
+            }
+            
+            if (!canAccessPrompt($_SESSION['user_id'], $id)) {
+                jsonResponse(['error' => 'Forbidden: You can only delete prompts from your team'], 403);
+            }
+            
+            $stmt = $db->prepare("UPDATE prompts SET is_archived = 1 WHERE id = ?");
+            $stmt->execute([$id]);
+        }
         
         jsonResponse([
             'success' => true,

@@ -18,6 +18,11 @@ if ($method === 'GET') {
 
 // POST - Create new category
 if ($method === 'POST') {
+    // Check manage_categories permission (Admin and Editor)
+    if (!hasPermission($_SESSION['user_id'], 'manage_categories')) {
+        jsonResponse(['error' => 'Forbidden: You do not have permission to manage categories'], 403);
+    }
+    
     $input = json_decode(file_get_contents('php://input'), true);
     $name = $input['name'] ?? '';
     
@@ -44,6 +49,11 @@ if ($method === 'POST') {
 
 // PUT - Update category (only user-defined)
 if ($method === 'PUT') {
+    // Check manage_categories permission (Admin and Editor)
+    if (!hasPermission($_SESSION['user_id'], 'manage_categories')) {
+        jsonResponse(['error' => 'Forbidden: You do not have permission to manage categories'], 403);
+    }
+    
     $input = json_decode(file_get_contents('php://input'), true);
     $id = $input['id'] ?? null;
     $name = $input['name'] ?? '';
@@ -79,6 +89,11 @@ if ($method === 'PUT') {
 
 // DELETE - Delete category (only user-defined)
 if ($method === 'DELETE') {
+    // Check manage_categories permission (Admin and Editor)
+    if (!hasPermission($_SESSION['user_id'], 'manage_categories')) {
+        jsonResponse(['error' => 'Forbidden: You do not have permission to manage categories'], 403);
+    }
+    
     $id = $_GET['id'] ?? null;
     
     if (!$id) {

@@ -87,12 +87,26 @@ try {
         jsonResponse(['error' => 'Username already exists'], 409);
     }
     
+    // Get default Viewer role ID
+    $stmt = $db->prepare("SELECT id FROM roles WHERE name = 'Viewer'");
+    $stmt->execute();
+    $viewerRole = $stmt->fetch();
+    
+    if (!$viewerRole) {
+        jsonResponse(['error' => 'Default role not found. Please contact administrator.'], 500);
+    }
+    
     // Hash password
     $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
     
-    // Insert new user
-    $stmt = $db->prepare("INSERT INTO users (username, full_name, password) VALUES (?, ?, ?)");
-    $stmt->execute([$username, $fullName, $hashedPassword]);
+    // Insert new user with Viewer role
+    $stmt = $db->prepare("INSERT INTO users (username, full_name, password, role_id, is_active) VALUES (?, ?, ?, ?, 1)");
+    $stmt->execute([$username, $fullName, $hashedPassword, $viewerRole['id']]);
+    
+    $newUserId = $db->lastInsertId();
+    
+    // Log registration to audit log
+    logAudit($newUserId, 'user_registered', 'New user registered with Viewer role', $clientIp);
     
     // Log successful registration attempt for rate limiting
     logRegistrationAttempt($clientIp);
@@ -101,9 +115,10 @@ try {
         'success' => true,
         'message' => 'Registration successful! Please log in with your credentials.',
         'user' => [
-            'id' => $db->lastInsertId(),
+            'id' => $newUserId,
             'username' => $username,
-            'full_name' => $fullName
+            'full_name' => $fullName,
+            'role' => 'Viewer'
         ]
     ], 201);
 } catch (Exception $e) {
