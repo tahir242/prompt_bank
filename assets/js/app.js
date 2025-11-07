@@ -1,5 +1,7 @@
 // Global State
 let currentUser = null;
+let userRole = null;
+let userPermissions = {};
 let prompts = [];
 let categories = [];
 let currentPromptId = null;
@@ -71,6 +73,28 @@ function setupEventListeners() {
     document.getElementById('closeCategoryModalFooterBtn')?.addEventListener('click', closeCategoryModal);
     document.getElementById('addCategoryForm')?.addEventListener('submit', handleAddCategory);
     
+    // Admin Panel
+    document.getElementById('adminPanelBtn')?.addEventListener('click', openAdminPanel);
+    document.getElementById('closeAdminPanelBtn')?.addEventListener('click', closeAdminPanel);
+    document.getElementById('closeAdminPanelFooterBtn')?.addEventListener('click', closeAdminPanel);
+    
+    // Admin Tabs
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            const button = e.currentTarget;
+            switchAdminTab(button.dataset.tab);
+        });
+    });
+    
+    // User Management
+    document.getElementById('editUserForm')?.addEventListener('submit', handleEditUser);
+    document.getElementById('cancelEditUserBtn')?.addEventListener('click', closeEditUserModal);
+    
+    // Team Management
+    document.getElementById('addTeamBtn')?.addEventListener('click', openAddTeamModal);
+    document.getElementById('addTeamForm')?.addEventListener('submit', handleAddTeam);
+    document.getElementById('cancelAddTeamBtn')?.addEventListener('click', closeAddTeamModal);
+    
     // Detail Tabs
     document.querySelectorAll('.detail-tab').forEach(tab => {
         tab.addEventListener('click', (e) => {
@@ -101,6 +125,9 @@ async function handleLogin(e) {
         
         if (data.success) {
             currentUser = data.user;
+            userRole = data.user.role_name;
+            userPermissions = data.user.permissions || {};
+            
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('dashboard').classList.remove('hidden');
             initDashboard();
@@ -223,14 +250,110 @@ async function handleRegister(e) {
 
 // Dashboard Initialization
 async function initDashboard() {
-    // Set current user
+    // Set current user and role
     const userElement = document.getElementById('currentUser');
     if (userElement) {
         userElement.textContent = currentUser?.username || 'User';
     }
     
+    // Update UI based on role and permissions
+    updateUIForRole();
+    
     await loadCategories();
     await loadPrompts();
+}
+
+// Helper: Check if user has permission
+function hasPermission(permission) {
+    return userPermissions && userPermissions[permission] === true;
+}
+
+// Helper: Check if user is in a specific role
+function isRole(roleName) {
+    return userRole === roleName;
+}
+
+// Update UI elements based on user role and permissions
+function updateUIForRole() {
+    // Display role badge
+    displayRoleBadge();
+    
+    // Control button visibility
+    const addPromptBtn = document.getElementById('addPromptBtn');
+    const manageCategoriesBtn = document.getElementById('manageCategoriesBtn');
+    const adminPanelBtn = document.getElementById('adminPanelBtn');
+    
+    // Show/hide Admin Panel button (Admin only)
+    if (adminPanelBtn) {
+        if (isRole('Admin')) {
+            adminPanelBtn.classList.remove('hidden');
+        } else {
+            adminPanelBtn.classList.add('hidden');
+        }
+    }
+    
+    // Show/hide Add Prompt button based on create_prompt permission
+    if (addPromptBtn) {
+        if (hasPermission('create_prompt')) {
+            addPromptBtn.classList.remove('hidden');
+        } else {
+            addPromptBtn.classList.add('hidden');
+        }
+    }
+    
+    // Show/hide Manage Categories button based on manage_categories permission
+    if (manageCategoriesBtn) {
+        if (hasPermission('manage_categories')) {
+            manageCategoriesBtn.classList.remove('hidden');
+        } else {
+            manageCategoriesBtn.classList.add('hidden');
+        }
+    }
+    
+    // Add visual indicator for read-only users
+    if (isRole('Viewer')) {
+        showViewerNotice();
+    }
+}
+
+// Display role badge in header
+function displayRoleBadge() {
+    const userElement = document.getElementById('currentUser');
+    if (userElement && userRole) {
+        const roleColors = {
+            'Admin': 'bg-red-100 text-red-800',
+            'Editor': 'bg-blue-100 text-blue-800',
+            'Viewer': 'bg-gray-100 text-gray-800'
+        };
+        
+        const colorClass = roleColors[userRole] || 'bg-gray-100 text-gray-800';
+        const roleBadge = `<span class="ml-2 px-2 py-1 text-xs font-semibold rounded ${colorClass}">${userRole}</span>`;
+        
+        // Check if badge already exists
+        if (!userElement.innerHTML.includes('role-badge')) {
+            userElement.innerHTML += roleBadge;
+        }
+    }
+}
+
+// Show notice for read-only viewers
+function showViewerNotice() {
+    const promptsContainer = document.getElementById('promptsList');
+    if (promptsContainer && !document.getElementById('viewerNotice')) {
+        const notice = document.createElement('div');
+        notice.id = 'viewerNotice';
+        notice.className = 'bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-lg mb-4';
+        notice.innerHTML = `
+            <div class="flex items-center gap-2">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+                </svg>
+                <span class="font-medium">Read-Only Access:</span>
+                <span>You have view-only permissions. Contact an administrator to request edit access.</span>
+            </div>
+        `;
+        promptsContainer.parentElement.insertBefore(notice, promptsContainer);
+    }
 }
 
 // Categories
@@ -291,6 +414,28 @@ function renderPrompts(promptsToRender) {
         // Strip markdown for preview
         const previewText = prompt.content.replace(/[#*`\[\]()_~>-]/g, '').substring(0, 150);
         
+        // Determine ownership indicator
+        let ownershipBadge = '';
+        if (prompt.team_id && currentUser?.team_id === prompt.team_id) {
+            ownershipBadge = `
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-green-100 text-green-800 border border-green-300" title="Team Prompt">
+                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
+                    </svg>
+                    Team
+                </span>
+            `;
+        } else if (prompt.user_id === currentUser?.id) {
+            ownershipBadge = `
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-purple-100 text-purple-800 border border-purple-300" title="Your Prompt">
+                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
+                    </svg>
+                    Yours
+                </span>
+            `;
+        }
+        
         return `
         <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow relative group border-l-4 border-indigo-500">
             <div class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -306,6 +451,7 @@ function renderPrompts(promptsToRender) {
                 <div class="flex justify-between items-start mb-3 pr-8">
                     <h3 class="text-lg font-semibold text-gray-900 truncate flex-1">${escapeHtml(prompt.title)}</h3>
                     <div class="flex items-center gap-2 ml-2 flex-shrink-0">
+                        ${ownershipBadge}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 border border-gray-300">
                             <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
@@ -390,6 +536,9 @@ async function viewPrompt(id) {
         // Reset copy button text
         document.getElementById('copyBtnText').textContent = 'Copy to Clipboard';
         
+        // Control edit/delete button visibility based on permissions
+        updatePromptActionButtons(prompt);
+        
         // Load version history
         renderVersionHistory(prompt.versions);
         
@@ -404,6 +553,51 @@ async function viewPrompt(id) {
     } catch (error) {
         console.error('Failed to load prompt:', error);
         alert('Failed to load prompt details');
+    }
+}
+
+// Update visibility of edit/delete buttons based on user permissions and prompt ownership
+function updatePromptActionButtons(prompt) {
+    const editBtn = document.getElementById('editPromptBtn');
+    const deleteBtn = document.getElementById('deletePromptBtn');
+    
+    // Determine if user can edit this prompt
+    let canEdit = false;
+    let canDelete = false;
+    
+    if (isRole('Admin')) {
+        // Admin can edit and delete everything
+        canEdit = true;
+        canDelete = true;
+    } else if (isRole('Editor')) {
+        // Editor can edit team prompts or own prompts
+        const isOwnPrompt = prompt.user_id === currentUser?.id;
+        const isSameTeam = prompt.team_id && prompt.team_id === currentUser?.team_id;
+        
+        canEdit = hasPermission('edit_team_prompt') && (isOwnPrompt || isSameTeam);
+        canDelete = hasPermission('delete_team_prompt') && (isOwnPrompt || isSameTeam);
+    } else {
+        // Viewer cannot edit or delete
+        canEdit = false;
+        canDelete = false;
+    }
+    
+    // Show/hide edit button
+    if (editBtn) {
+        if (canEdit) {
+            editBtn.classList.remove('hidden');
+        } else {
+            editBtn.classList.add('hidden');
+        }
+    }
+    
+    // Show/hide delete button
+    if (deleteBtn) {
+        if (canDelete) {
+            deleteBtn.classList.remove('hidden');
+        } else {
+            deleteBtn.classList.add('hidden');
+        }
     }
 }
 
@@ -1091,5 +1285,335 @@ async function deleteCategory(id, name, button) {
     } catch (error) {
         console.error('Failed to delete category:', error);
         showToast('Failed to delete category', 'error');
+    }
+}
+
+// ===== ADMIN PANEL =====
+
+// Open Admin Panel
+async function openAdminPanel() {
+    document.getElementById('adminPanelModal').classList.remove('hidden');
+    switchAdminTab('users'); // Default to users tab
+    await loadUsers();
+}
+
+// Close Admin Panel
+function closeAdminPanel() {
+    document.getElementById('adminPanelModal').classList.add('hidden');
+}
+
+// Switch Admin Tabs
+function switchAdminTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+        if (tab.dataset.tab === tabName) {
+            tab.classList.add('border-red-500', 'text-red-600');
+            tab.classList.remove('border-transparent', 'text-gray-500');
+        } else {
+            tab.classList.remove('border-red-500', 'text-red-600');
+            tab.classList.add('border-transparent', 'text-gray-500');
+        }
+    });
+    
+    // Show/hide content
+    document.querySelectorAll('.admin-tab-content').forEach(content => {
+        content.classList.add('hidden');
+    });
+    
+    const activeContent = document.getElementById(tabName + 'Tab');
+    if (activeContent) {
+        activeContent.classList.remove('hidden');
+    }
+    
+    // Load data for active tab
+    if (tabName === 'users') {
+        loadUsers();
+    } else if (tabName === 'teams') {
+        loadTeams();
+    }
+}
+
+// Load Users
+async function loadUsers() {
+    try {
+        const response = await fetch('api/users.php');
+        const data = await response.json();
+        
+        if (data.users) {
+            renderUsers(data.users);
+        }
+    } catch (error) {
+        console.error('Failed to load users:', error);
+        showToast('Failed to load users', 'error');
+    }
+}
+
+// Render Users Table
+function renderUsers(users) {
+    const tbody = document.getElementById('usersTableBody');
+    
+    if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">No users found</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = users.map(user => {
+        const roleColors = {
+            'Admin': 'bg-red-100 text-red-800',
+            'Editor': 'bg-blue-100 text-blue-800',
+            'Viewer': 'bg-gray-100 text-gray-800'
+        };
+        const roleClass = roleColors[user.role_name] || 'bg-gray-100 text-gray-800';
+        const statusClass = user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+        const statusText = user.is_active ? 'Active' : 'Inactive';
+        
+        // Disable edit for current user
+        const isSelf = user.id === currentUser?.id;
+        const disableEdit = isSelf ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 cursor-pointer';
+        
+        return `
+            <tr>
+                <td class="px-4 py-3">
+                    <div class="text-sm font-medium text-gray-900">${escapeHtml(user.username)}</div>
+                    <div class="text-sm text-gray-500">${escapeHtml(user.full_name || '')}</div>
+                </td>
+                <td class="px-4 py-3">
+                    <span class="px-2 py-1 text-xs font-semibold rounded ${roleClass}">${user.role_name}</span>
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-900">${user.team_name || '<span class="text-gray-400">No team</span>'}</td>
+                <td class="px-4 py-3">
+                    <span class="px-2 py-1 text-xs font-semibold rounded ${statusClass}">${statusText}</span>
+                </td>
+                <td class="px-4 py-3 text-sm text-gray-900">${user.prompt_count || 0}</td>
+                <td class="px-4 py-3">
+                    <button onclick="${isSelf ? '' : `editUser(${user.id})`}" 
+                        class="text-indigo-600 ${disableEdit} text-sm font-medium"
+                        ${isSelf ? 'disabled title="Cannot edit your own account"' : ''}>
+                        Edit
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Edit User
+async function editUser(userId) {
+    try {
+        // Fetch user details
+        const response = await fetch('api/users.php');
+        const data = await response.json();
+        const user = data.users.find(u => u.id === userId);
+        
+        if (!user) {
+            showToast('User not found', 'error');
+            return;
+        }
+        
+        // Populate form
+        document.getElementById('editUserId').value = user.id;
+        document.getElementById('editUserUsername').value = user.username;
+        document.getElementById('editUserFullName').value = user.full_name || '';
+        document.getElementById('editUserActive').checked = user.is_active;
+        
+        // Load roles
+        await loadRolesForEdit();
+        document.getElementById('editUserRole').value = user.role_id;
+        
+        // Load teams
+        await loadTeamsForEdit();
+        document.getElementById('editUserTeam').value = user.team_id || '';
+        
+        // Open modal
+        document.getElementById('editUserModal').classList.remove('hidden');
+    } catch (error) {
+        console.error('Failed to load user:', error);
+        showToast('Failed to load user details', 'error');
+    }
+}
+
+// Load Roles for Edit
+async function loadRolesForEdit() {
+    try {
+        const response = await fetch('api/users.php');
+        const data = await response.json();
+        
+        // Get unique roles from users
+        const roles = [...new Set(data.users.map(u => ({ id: u.role_id, name: u.role_name })))];
+        const uniqueRoles = roles.filter((role, index, self) => 
+            index === self.findIndex(r => r.id === role.id)
+        );
+        
+        const select = document.getElementById('editUserRole');
+        select.innerHTML = uniqueRoles.map(role => 
+            `<option value="${role.id}">${role.name}</option>`
+        ).join('');
+    } catch (error) {
+        console.error('Failed to load roles:', error);
+    }
+}
+
+// Load Teams for Edit
+async function loadTeamsForEdit() {
+    try {
+        const response = await fetch('api/teams.php');
+        const teams = await response.json();
+        
+        const select = document.getElementById('editUserTeam');
+        select.innerHTML = '<option value="">No Team</option>' + 
+            teams.map(team => `<option value="${team.id}">${escapeHtml(team.name)}</option>`).join('');
+    } catch (error) {
+        console.error('Failed to load teams:', error);
+    }
+}
+
+// Handle Edit User Submit
+async function handleEditUser(e) {
+    e.preventDefault();
+    
+    const userId = document.getElementById('editUserId').value;
+    const roleId = document.getElementById('editUserRole').value;
+    const teamId = document.getElementById('editUserTeam').value;
+    const isActive = document.getElementById('editUserActive').checked ? 1 : 0;
+    
+    try {
+        const response = await fetch('api/users.php', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: parseInt(userId),
+                role_id: parseInt(roleId),
+                team_id: teamId ? parseInt(teamId) : null,
+                is_active: isActive
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('User updated successfully');
+            closeEditUserModal();
+            await loadUsers();
+        } else {
+            showToast(result.error || 'Failed to update user', 'error');
+        }
+    } catch (error) {
+        console.error('Failed to update user:', error);
+        showToast('Failed to update user', 'error');
+    }
+}
+
+// Close Edit User Modal
+function closeEditUserModal() {
+    document.getElementById('editUserModal').classList.add('hidden');
+}
+
+// Load Teams
+async function loadTeams() {
+    try {
+        const response = await fetch('api/teams.php');
+        const teams = await response.json();
+        renderTeams(teams);
+    } catch (error) {
+        console.error('Failed to load teams:', error);
+        showToast('Failed to load teams', 'error');
+    }
+}
+
+// Render Teams Grid
+function renderTeams(teams) {
+    const grid = document.getElementById('teamsGrid');
+    
+    if (teams.length === 0) {
+        grid.innerHTML = '<div class="col-span-full text-center py-8 text-gray-500">No teams found</div>';
+        return;
+    }
+    
+    grid.innerHTML = teams.map(team => `
+        <div class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between mb-3">
+                <h5 class="text-lg font-semibold text-gray-900">${escapeHtml(team.name)}</h5>
+                <button onclick="deleteTeam(${team.id}, '${escapeHtml(team.name)}')" 
+                    class="text-red-600 hover:text-red-800 text-sm font-medium"
+                    ${team.member_count > 0 ? 'disabled title="Cannot delete team with members" class="opacity-50 cursor-not-allowed"' : ''}>
+                    Delete
+                </button>
+            </div>
+            <div class="flex items-center gap-2 text-sm text-gray-600">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
+                </svg>
+                <span>${team.member_count || 0} member${team.member_count !== 1 ? 's' : ''}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Open Add Team Modal
+function openAddTeamModal() {
+    document.getElementById('addTeamModal').classList.remove('hidden');
+    document.getElementById('newTeamName').value = '';
+}
+
+// Close Add Team Modal
+function closeAddTeamModal() {
+    document.getElementById('addTeamModal').classList.add('hidden');
+}
+
+// Handle Add Team
+async function handleAddTeam(e) {
+    e.preventDefault();
+    
+    const name = document.getElementById('newTeamName').value.trim();
+    
+    if (!name) {
+        showToast('Team name is required', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('api/teams.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('Team created successfully');
+            closeAddTeamModal();
+            await loadTeams();
+        } else {
+            showToast(result.error || 'Failed to create team', 'error');
+        }
+    } catch (error) {
+        console.error('Failed to create team:', error);
+        showToast('Failed to create team', 'error');
+    }
+}
+
+// Delete Team
+async function deleteTeam(teamId, teamName) {
+    if (!confirm(`Are you sure you want to delete the team "${teamName}"?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`api/teams.php?id=${teamId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('Team deleted successfully');
+            await loadTeams();
+        } else {
+            showToast(result.error || 'Failed to delete team', 'error');
+        }
+    } catch (error) {
+        console.error('Failed to delete team:', error);
+        showToast('Failed to delete team', 'error');
     }
 }
