@@ -83,14 +83,18 @@ if ($method === 'POST') {
     }
     
     try {
+        // Get user's role and team info
+        $userRole = getUserRole($_SESSION['user_id']);
+        $teamId = $userRole['team_id'] ?? null;
+        
         $db->beginTransaction();
         
-        // Insert prompt
+        // Insert prompt with user_id and team_id
         $stmt = $db->prepare("
-            INSERT INTO prompts (title, content, category_id, created_at, updated_at) 
-            VALUES (?, ?, ?, datetime('now'), datetime('now'))
+            INSERT INTO prompts (title, content, category_id, user_id, team_id, created_at, updated_at) 
+            VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         ");
-        $stmt->execute([$title, $content, $categoryId]);
+        $stmt->execute([$title, $content, $categoryId, $_SESSION['user_id'], $teamId]);
         $promptId = $db->lastInsertId();
         
         // Create initial version
@@ -127,6 +131,11 @@ if ($method === 'PUT') {
     }
     
     try {
+        // Check if user can access this prompt
+        if (!canAccessPrompt($_SESSION['user_id'], $id)) {
+            jsonResponse(['error' => 'Forbidden: You do not have permission to edit this prompt'], 403);
+        }
+        
         $db->beginTransaction();
         
         // Get current version number
@@ -166,7 +175,7 @@ if ($method === 'PUT') {
     }
 }
 
-// DELETE - Soft delete (archive) prompt
+// DELETE - Soft delete (archive) prompt (Admin only for now)
 if ($method === 'DELETE') {
     $id = $_GET['id'] ?? null;
     
@@ -175,6 +184,12 @@ if ($method === 'DELETE') {
     }
     
     try {
+        // Only Admins can delete prompts for now (can be expanded later)
+        $userRole = getUserRole($_SESSION['user_id']);
+        if ($userRole['role_name'] !== 'Admin') {
+            jsonResponse(['error' => 'Forbidden: Only Admins can delete prompts'], 403);
+        }
+        
         $stmt = $db->prepare("UPDATE prompts SET is_archived = 1 WHERE id = ?");
         $stmt->execute([$id]);
         
