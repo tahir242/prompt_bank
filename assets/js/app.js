@@ -30,6 +30,11 @@ function setupEventListeners() {
     // Login Form
     document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
     
+    // Registration
+    document.getElementById('showRegisterBtn')?.addEventListener('click', openRegisterModal);
+    document.getElementById('registerForm')?.addEventListener('submit', handleRegister);
+    document.getElementById('cancelRegisterBtn')?.addEventListener('click', closeRegisterModal);
+    
     // Logout
     document.getElementById('logoutBtn')?.addEventListener('click', handleLogout);
     
@@ -116,6 +121,103 @@ async function handleLogout() {
     } catch (error) {
         console.error('Logout failed:', error);
         location.reload();
+    }
+}
+
+// Registration Modal
+function openRegisterModal() {
+    document.getElementById('registerModal').classList.remove('hidden');
+    document.getElementById('registerForm').reset();
+    document.getElementById('registerError').classList.add('hidden');
+    document.getElementById('registerSuccess').classList.add('hidden');
+}
+
+function closeRegisterModal() {
+    document.getElementById('registerModal').classList.add('hidden');
+    document.getElementById('registerForm').reset();
+    document.getElementById('registerError').classList.add('hidden');
+    document.getElementById('registerSuccess').classList.add('hidden');
+}
+
+async function handleRegister(e) {
+    e.preventDefault();
+    
+    const username = document.getElementById('registerUsername').value.trim();
+    const fullName = document.getElementById('registerFullName').value.trim();
+    const password = document.getElementById('registerPassword').value;
+    const confirmPassword = document.getElementById('registerConfirmPassword').value;
+    const errorDiv = document.getElementById('registerError');
+    const successDiv = document.getElementById('registerSuccess');
+    
+    // Hide previous messages
+    errorDiv.classList.add('hidden');
+    successDiv.classList.add('hidden');
+    
+    // Client-side validation
+    if (password !== confirmPassword) {
+        errorDiv.textContent = 'Passwords do not match';
+        errorDiv.classList.remove('hidden');
+        return;
+    }
+    
+    if (password.length < 6) {
+        errorDiv.textContent = 'Password must be at least 6 characters long';
+        errorDiv.classList.remove('hidden');
+        return;
+    }
+    
+    if (!username.match(/^[a-zA-Z0-9_]{3,20}$/)) {
+        errorDiv.textContent = 'Username must be 3-20 characters long and contain only letters, numbers, and underscores';
+        errorDiv.classList.remove('hidden');
+        return;
+    }
+    
+    if (fullName.length < 2) {
+        errorDiv.textContent = 'Please enter your full name';
+        errorDiv.classList.remove('hidden');
+        return;
+    }
+    
+    try {
+        const response = await fetch('api/register.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, full_name: fullName, password })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            successDiv.textContent = data.message || 'Registration successful! Redirecting to login...';
+            successDiv.classList.remove('hidden');
+            
+            // Clear form
+            document.getElementById('registerForm').reset();
+            
+            // Close modal and show login after 2 seconds
+            setTimeout(() => {
+                closeRegisterModal();
+                // Show a success message on the login screen
+                const loginError = document.getElementById('loginError');
+                loginError.textContent = 'Account created successfully! Please log in.';
+                loginError.classList.remove('bg-red-50', 'border-red-200', 'text-red-700');
+                loginError.classList.add('bg-green-50', 'border-green-200', 'text-green-700');
+                loginError.classList.remove('hidden');
+                
+                // Reset login error styling after a few seconds
+                setTimeout(() => {
+                    loginError.classList.add('hidden');
+                    loginError.classList.remove('bg-green-50', 'border-green-200', 'text-green-700');
+                    loginError.classList.add('bg-red-50', 'border-red-200', 'text-red-700');
+                }, 5000);
+            }, 2000);
+        } else {
+            errorDiv.textContent = data.error || 'Registration failed';
+            errorDiv.classList.remove('hidden');
+        }
+    } catch (error) {
+        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.classList.remove('hidden');
     }
 }
 

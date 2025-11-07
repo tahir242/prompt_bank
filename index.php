@@ -49,10 +49,77 @@ session_start();
                     </button>
                 </div>
                 
+                <div class="text-center">
+                    <button type="button" id="showRegisterBtn" class="text-sm text-indigo-600 hover:text-indigo-500 font-medium">
+                        Don't have an account? Create one
+                    </button>
+                </div>
+                
                 <div class="text-xs text-gray-500 text-center">
                     Default credentials: admin / admin123
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Registration Modal -->
+    <div id="registerModal" class="hidden fixed z-10 inset-0 overflow-y-auto">
+        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+            
+            <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full">
+                <form id="registerForm" class="bg-white px-4 pt-5 pb-4 sm:p-6">
+                    <div class="mb-4">
+                        <h3 class="text-lg font-medium text-gray-900 text-center">Create Account</h3>
+                        <p class="mt-1 text-sm text-gray-600 text-center">Join System Prompt Bank</p>
+                    </div>
+                    
+                    <div id="registerError" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4"></div>
+                    <div id="registerSuccess" class="hidden bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-4"></div>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label for="registerUsername" class="block text-sm font-medium text-gray-700">Username</label>
+                            <input id="registerUsername" name="username" type="text" required 
+                                class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" 
+                                placeholder="Choose a username">
+                            <p class="mt-1 text-xs text-gray-500">3-20 characters, letters, numbers, and underscores only</p>
+                        </div>
+                        
+                        <div>
+                            <label for="registerFullName" class="block text-sm font-medium text-gray-700">Full Name</label>
+                            <input id="registerFullName" name="full_name" type="text" required 
+                                class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" 
+                                placeholder="Your full name">
+                        </div>
+                        
+                        <div>
+                            <label for="registerPassword" class="block text-sm font-medium text-gray-700">Password</label>
+                            <input id="registerPassword" name="password" type="password" required 
+                                class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" 
+                                placeholder="At least 6 characters">
+                        </div>
+                        
+                        <div>
+                            <label for="registerConfirmPassword" class="block text-sm font-medium text-gray-700">Confirm Password</label>
+                            <input id="registerConfirmPassword" name="confirm_password" type="password" required 
+                                class="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" 
+                                placeholder="Re-enter password">
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 flex gap-2">
+                        <button type="submit" 
+                            class="flex-1 inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none sm:text-sm">
+                            Create Account
+                        </button>
+                        <button type="button" id="cancelRegisterBtn" 
+                            class="flex-1 inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:text-sm">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 

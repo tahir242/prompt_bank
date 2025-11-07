@@ -26,8 +26,10 @@ A modern, feature-rich web application for managing and organizing system prompt
 - **Responsive Design**: Works perfectly on desktop, tablet, and mobile devices
 
 ### 🔐 Security & Performance
+- **User Registration**: Self-service account creation with validation
 - **Session-based Authentication**: Secure user login system with PHP sessions
 - **Password Hashing**: BCrypt password protection
+- **Rate Limiting**: Protection against spam registrations (3 per IP per hour)
 - **SQL Injection Prevention**: Prepared statements throughout the codebase
 - **XSS Protection**: HTML escaping for all user-generated content
 - **System Category Protection**: Prevents accidental modification of core categories
@@ -128,6 +130,7 @@ prompt_bank/
 **users**
 - `id` (INTEGER, Primary Key)
 - `username` (TEXT, Unique)
+- `full_name` (TEXT)
 - `password` (TEXT, Hashed)
 - `created_at` (DATETIME)
 
@@ -216,6 +219,7 @@ You can add custom categories as needed (feature can be added via the categories
 
 ### Authentication
 - `POST /api/login.php` - User login
+- `POST /api/register.php` - User registration (new users)
 - `GET /api/logout.php` - User logout
 
 ### Prompts
