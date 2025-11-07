@@ -126,21 +126,22 @@ function requireRole($allowedRoles) {
  * @param int $promptId Prompt ID
  * @return bool True if user can access the prompt
  */
+/**
+ * Check if a user can access a specific prompt based on visibility and shares
+ * @param int $userId User ID
+ * @param int $promptId Prompt ID
+ * @return array|false Access info with level, or false if no access
+ */
 function canAccessPrompt($userId, $promptId) {
     $db = getDatabase();
-    $userRole = getUserRole($userId);
     
-    if (!$userRole || !$userRole['is_active']) {
-        return false;
-    }
-    
-    // Admin can access all prompts
-    if ($userRole['role_name'] === 'Admin') {
-        return true;
-    }
-    
-    // Get prompt details (will be fully functional in Phase 3 when prompts have team_id)
-    $stmt = $db->prepare("SELECT id, user_id, team_id FROM prompts WHERE id = ? AND is_archived = 0");
+    // Get prompt with ownership info
+    $stmt = $db->prepare("
+        SELECT p.*, u.username as owner_username
+        FROM prompts p
+        LEFT JOIN users u ON p.user_id = u.id
+        WHERE p.id = ? AND p.is_archived = 0
+    ");
     $stmt->execute([$promptId]);
     $prompt = $stmt->fetch();
     
@@ -148,28 +149,65 @@ function canAccessPrompt($userId, $promptId) {
         return false;
     }
     
-    // Check if prompt has team_id column (added in Phase 3)
-    if (isset($prompt['team_id'])) {
-        // Editor can access team prompts
-        if ($userRole['role_name'] === 'Editor' && $prompt['team_id'] == $userRole['team_id']) {
-            return true;
-        }
+    // Get user info
+    $userRole = getUserRole($userId);
+    if (!$userRole || !$userRole['is_active']) {
+        return false;
+    }
+    
+    // Owner always has edit access
+    if (isset($prompt['user_id']) && $prompt['user_id'] == $userId) {
+        return ['access_level' => 'edit', 'reason' => 'owner'];
+    }
+    
+    // Admin has edit access to everything
+    if ($userRole['role_name'] === 'Admin') {
+        return ['access_level' => 'edit', 'reason' => 'admin'];
+    }
+    
+    // Check visibility
+    $visibility = $prompt['visibility'] ?? 'private';
+    
+    // Public prompts - all authenticated users get view access
+    if ($visibility === 'public') {
+        return ['access_level' => 'view', 'reason' => 'public'];
+    }
+    
+    // Team prompts - team members get configured access level
+    if ($visibility === 'team' && isset($prompt['team_id']) && $prompt['team_id'] == $userRole['team_id']) {
+        $teamAccessLevel = $prompt['team_access_level'] ?? 'view';
+        return ['access_level' => $teamAccessLevel, 'reason' => 'team'];
+    }
+    
+    // Check direct shares
+    $shareStmt = $db->prepare("
+        SELECT access_level
+        FROM prompt_shares
+        WHERE prompt_id = ? AND shared_with_user_id = ?
+    ");
+    $shareStmt->execute([$promptId, $userId]);
+    $share = $shareStmt->fetch();
+    
+    if ($share) {
+        return ['access_level' => $share['access_level'], 'reason' => 'direct_share'];
+    }
+    
+    // Check team shares
+    if (isset($userRole['team_id'])) {
+        $teamShareStmt = $db->prepare("
+            SELECT access_level
+            FROM prompt_shares
+            WHERE prompt_id = ? AND shared_with_team_id = ?
+        ");
+        $teamShareStmt->execute([$promptId, $userRole['team_id']]);
+        $teamShare = $teamShareStmt->fetch();
         
-        // User can access their own prompts
-        if (isset($prompt['user_id']) && $prompt['user_id'] == $userId) {
-            return true;
+        if ($teamShare) {
+            return ['access_level' => $teamShare['access_level'], 'reason' => 'team_share'];
         }
-    } else {
-        // Fallback for prompts without team_id (backward compatibility)
-        // Viewers and Editors can see all prompts (read-only for viewers)
-        return true;
     }
     
-    // Viewers can view all prompts (read-only)
-    if ($userRole['role_name'] === 'Viewer') {
-        return true;
-    }
-    
+    // No access
     return false;
 }
 
@@ -194,4 +232,198 @@ function logAudit($userId, $action, $details = null, $ipAddress = null) {
     ");
     
     return $stmt->execute([$userId, $action, $details, $ipAddress]);
+}
+
+/**
+ * Get all shares for a specific prompt
+ * @param int $promptId Prompt ID
+ * @return array Array of shares with user/team info
+ */
+function getPromptShares($promptId) {
+    $db = getDatabase();
+    
+    $stmt = $db->prepare("
+        SELECT 
+            ps.*,
+            u.username as shared_with_username,
+            u.full_name as shared_with_full_name,
+            t.name as shared_with_team_name,
+            creator.username as created_by_username
+        FROM prompt_shares ps
+        LEFT JOIN users u ON ps.shared_with_user_id = u.id
+        LEFT JOIN teams t ON ps.shared_with_team_id = t.id
+        LEFT JOIN users creator ON ps.created_by = creator.id
+        WHERE ps.prompt_id = ?
+        ORDER BY ps.created_at DESC
+    ");
+    $stmt->execute([$promptId]);
+    
+    return $stmt->fetchAll();
+}
+
+/**
+ * Create a new prompt share
+ * @param int $promptId Prompt ID
+ * @param int $createdBy User ID creating the share
+ * @param int|null $sharedWithUserId User ID to share with (null if team share)
+ * @param int|null $sharedWithTeamId Team ID to share with (null if user share)
+ * @param string $accessLevel 'view' or 'edit'
+ * @return int|false Share ID if successful, false on failure
+ */
+function sharePrompt($promptId, $createdBy, $sharedWithUserId, $sharedWithTeamId, $accessLevel = 'view') {
+    $db = getDatabase();
+    
+    // Validate access level
+    if (!in_array($accessLevel, ['view', 'edit'])) {
+        return false;
+    }
+    
+    // Ensure only one of user_id or team_id is set
+    if (($sharedWithUserId && $sharedWithTeamId) || (!$sharedWithUserId && !$sharedWithTeamId)) {
+        return false;
+    }
+    
+    try {
+        $stmt = $db->prepare("
+            INSERT INTO prompt_shares (prompt_id, shared_with_user_id, shared_with_team_id, access_level, created_by)
+            VALUES (?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([$promptId, $sharedWithUserId, $sharedWithTeamId, $accessLevel, $createdBy]);
+        
+        return $db->lastInsertId();
+    } catch (PDOException $e) {
+        // Handle duplicate shares
+        if (strpos($e->getMessage(), 'UNIQUE constraint') !== false) {
+            return false;
+        }
+        throw $e;
+    }
+}
+
+/**
+ * Revoke a prompt share
+ * @param int $shareId Share ID to revoke
+ * @return bool True if successful
+ */
+function revokeShare($shareId) {
+    $db = getDatabase();
+    
+    $stmt = $db->prepare("DELETE FROM prompt_shares WHERE id = ?");
+    return $stmt->execute([$shareId]);
+}
+
+/**
+ * Request access to a prompt
+ * @param int $promptId Prompt ID
+ * @param int $userId User ID requesting access
+ * @param string|null $message Optional message with the request
+ * @return int|false Request ID if successful, false on failure
+ */
+function requestAccess($promptId, $userId, $message = null) {
+    $db = getDatabase();
+    
+    try {
+        $stmt = $db->prepare("
+            INSERT INTO access_requests (prompt_id, user_id, message, status)
+            VALUES (?, ?, ?, 'pending')
+        ");
+        $stmt->execute([$promptId, $userId, $message]);
+        
+        return $db->lastInsertId();
+    } catch (PDOException $e) {
+        // Handle duplicate requests
+        if (strpos($e->getMessage(), 'UNIQUE constraint') !== false) {
+            return false;
+        }
+        throw $e;
+    }
+}
+
+/**
+ * Get pending access requests for prompts owned by a user
+ * @param int $userId Owner user ID
+ * @return array Array of pending requests
+ */
+function getPendingRequests($userId) {
+    $db = getDatabase();
+    
+    $stmt = $db->prepare("
+        SELECT 
+            ar.*,
+            p.title as prompt_title,
+            u.username as requester_username,
+            u.full_name as requester_full_name
+        FROM access_requests ar
+        JOIN prompts p ON ar.prompt_id = p.id
+        JOIN users u ON ar.user_id = u.id
+        WHERE p.user_id = ? AND ar.status = 'pending' AND p.is_archived = 0
+        ORDER BY ar.created_at DESC
+    ");
+    $stmt->execute([$userId]);
+    
+    return $stmt->fetchAll();
+}
+
+/**
+ * Approve an access request and create a share
+ * @param int $requestId Request ID
+ * @param int $resolvedBy User ID approving the request
+ * @param string $accessLevel 'view' or 'edit'
+ * @return bool True if successful
+ */
+function approveRequest($requestId, $resolvedBy, $accessLevel = 'view') {
+    $db = getDatabase();
+    
+    try {
+        $db->beginTransaction();
+        
+        // Get request details
+        $stmt = $db->prepare("SELECT * FROM access_requests WHERE id = ? AND status = 'pending'");
+        $stmt->execute([$requestId]);
+        $request = $stmt->fetch();
+        
+        if (!$request) {
+            $db->rollBack();
+            return false;
+        }
+        
+        // Update request status
+        $updateStmt = $db->prepare("
+            UPDATE access_requests
+            SET status = 'approved', resolved_at = datetime('now'), resolved_by = ?
+            WHERE id = ?
+        ");
+        $updateStmt->execute([$resolvedBy, $requestId]);
+        
+        // Create share
+        $shareStmt = $db->prepare("
+            INSERT INTO prompt_shares (prompt_id, shared_with_user_id, access_level, created_by)
+            VALUES (?, ?, ?, ?)
+        ");
+        $shareStmt->execute([$request['prompt_id'], $request['user_id'], $accessLevel, $resolvedBy]);
+        
+        $db->commit();
+        return true;
+    } catch (Exception $e) {
+        $db->rollBack();
+        return false;
+    }
+}
+
+/**
+ * Deny an access request
+ * @param int $requestId Request ID
+ * @param int $resolvedBy User ID denying the request
+ * @return bool True if successful
+ */
+function denyRequest($requestId, $resolvedBy) {
+    $db = getDatabase();
+    
+    $stmt = $db->prepare("
+        UPDATE access_requests
+        SET status = 'denied', resolved_at = datetime('now'), resolved_by = ?
+        WHERE id = ? AND status = 'pending'
+    ");
+    
+    return $stmt->execute([$resolvedBy, $requestId]);
 }
