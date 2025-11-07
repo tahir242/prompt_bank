@@ -9,6 +9,7 @@ function getDatabase() {
     try {
         $db = new PDO('sqlite:' . $dbPath);
         $db->exec('PRAGMA journal_mode = WAL;');
+        $db->exec('PRAGMA foreign_keys = ON;');
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
         return $db;

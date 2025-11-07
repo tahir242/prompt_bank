@@ -78,10 +78,17 @@ try {
             title TEXT NOT NULL,
             content TEXT NOT NULL,
             category_id INTEGER,
+            user_id INTEGER,
+            team_id INTEGER,
+            visibility TEXT DEFAULT 'private' CHECK(visibility IN ('private', 'team', 'public')),
+            allow_anonymous BOOLEAN DEFAULT 0,
+            team_access_level TEXT DEFAULT 'view' CHECK(team_access_level IN ('view', 'edit')),
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             is_archived BOOLEAN DEFAULT 0,
-            FOREIGN KEY (category_id) REFERENCES categories(id)
+            FOREIGN KEY (category_id) REFERENCES categories(id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (team_id) REFERENCES teams(id)
         )
     ");
     
@@ -96,6 +103,59 @@ try {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (prompt_id) REFERENCES prompts(id),
             FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ");
+    
+    // Create prompt_shares table for sharing prompts
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS prompt_shares (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            prompt_id INTEGER NOT NULL,
+            shared_with_user_id INTEGER,
+            shared_with_team_id INTEGER,
+            access_level TEXT NOT NULL DEFAULT 'view' CHECK(access_level IN ('view', 'edit')),
+            created_by INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE,
+            FOREIGN KEY (shared_with_user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (shared_with_team_id) REFERENCES teams(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id),
+            CHECK ((shared_with_user_id IS NOT NULL AND shared_with_team_id IS NULL) OR 
+                   (shared_with_user_id IS NULL AND shared_with_team_id IS NOT NULL)),
+            UNIQUE(prompt_id, shared_with_user_id),
+            UNIQUE(prompt_id, shared_with_team_id)
+        )
+    ");
+    
+    // Create access_requests table for request access workflow
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS access_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            prompt_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            message TEXT,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'denied')),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            resolved_at DATETIME,
+            resolved_by INTEGER,
+            FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (resolved_by) REFERENCES users(id),
+            UNIQUE(prompt_id, user_id, status)
+        )
+    ");
+    
+    // Create prompt_collaborators table for real-time collaboration tracking
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS prompt_collaborators (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            prompt_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
+            is_editing BOOLEAN DEFAULT 0,
+            FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(prompt_id, user_id)
         )
     ");
     
@@ -188,6 +248,20 @@ try {
     $db->exec("CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active)");
     $db->exec("CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id)");
     $db->exec("CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)");
+    
+    // Sharing and collaboration indexes
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_prompts_visibility ON prompts(visibility)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_prompts_allow_anonymous ON prompts(allow_anonymous)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_prompts_user_id ON prompts(user_id)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_prompts_team_id ON prompts(team_id)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_prompt_shares_prompt_id ON prompt_shares(prompt_id)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_prompt_shares_user_id ON prompt_shares(shared_with_user_id)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_prompt_shares_team_id ON prompt_shares(shared_with_team_id)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_access_requests_prompt_id ON access_requests(prompt_id)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_access_requests_user_id ON access_requests(user_id)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_access_requests_status ON access_requests(status)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_collaborators_prompt_id ON prompt_collaborators(prompt_id)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_collaborators_last_activity ON prompt_collaborators(last_activity)");
     
     echo "Database initialized successfully!\n";
     echo "Default user created - Username: admin, Password: admin123\n";
