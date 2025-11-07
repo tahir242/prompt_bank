@@ -21,7 +21,7 @@ config.local.php
 .DS_Store
 Thumbs.db
 desktop.ini
-
+document.txt
 # Logs
 *.log
 logs/
