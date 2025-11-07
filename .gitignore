@@ -9,7 +9,7 @@ database/prompts.db-wal
 # Environment files
 .env
 config.local.php
-.github/
+.github
 plan/
 # IDE files
 .vscode/
