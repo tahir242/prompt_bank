@@ -15,6 +15,7 @@ try {
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
+            full_name TEXT NOT NULL,
             password TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -60,8 +61,8 @@ try {
     
     // Insert default admin user (username: admin, password: admin123)
     $hashedPassword = password_hash('admin123', PASSWORD_DEFAULT);
-    $stmt = $db->prepare("INSERT OR IGNORE INTO users (username, password) VALUES (?, ?)");
-    $stmt->execute(['admin', $hashedPassword]);
+    $stmt = $db->prepare("INSERT OR IGNORE INTO users (username, full_name, password) VALUES (?, ?, ?)");
+    $stmt->execute(['admin', 'System Administrator', $hashedPassword]);
     
     // Insert default system categories
     $defaultCategories = [

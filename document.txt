@@ -152,3 +152,4 @@ Future Enhancements
 - User role management
 - API rate limiting
 - Audit logging
+- User Registration
