@@ -35,14 +35,27 @@ A modern, feature-rich web application for managing and organizing system prompt
 - **Inline Editing**: Edit categories directly without separate forms
 - **Responsive Design**: Works perfectly on desktop, tablet, and mobile devices
 
-### 🔐 Security & Performance
-- **User Registration**: Self-service account creation with validation
+### � User Management & Authentication
+- **User Registration**: Self-service account creation with full validation
+- **Email Validation**: Proper email format checking and uniqueness enforcement
+- **Full Name Support**: Users can set display names (migrated with `migrate_add_fullname.php`)
+- **Team Assignment**: Users belong to teams for collaboration
+- **Role-Based Access Control (RBAC)**: Three roles (Admin, Editor, Viewer) with distinct permissions
 - **Session-based Authentication**: Secure user login system with PHP sessions
-- **Password Hashing**: BCrypt password protection
-- **Rate Limiting**: Protection against spam registrations (3 per IP per hour)
+- **Password Hashing**: BCrypt password protection with strong algorithm
+- **Rate Limiting**: IP-based protection against spam registrations (3 per hour)
+- **Admin Dashboard**: Manage users, assign roles, deactivate accounts
+- **Role Enforcement**: API-level permission checks on all protected endpoints
+
+### 🔐 Security & Performance
 - **SQL Injection Prevention**: Prepared statements throughout the codebase
 - **XSS Protection**: HTML escaping for all user-generated content
+- **CSRF Protection**: Session validation on all state-changing operations
 - **System Category Protection**: Prevents accidental modification of core categories
+- **Database Transactions**: Atomic operations for data integrity
+- **SQLite WAL Mode**: Write-Ahead Logging for better concurrency
+- **Foreign Key Enforcement**: Referential integrity at database level
+- **Secure Password Reset**: Token-based password recovery (ready for implementation)
 
 ### 📊 Advanced Features
 - **Metadata View**: Comprehensive statistics including character, word, and line counts
@@ -153,8 +166,18 @@ prompt_bank/
 **users**
 - `id` (INTEGER, Primary Key)
 - `username` (TEXT, Unique)
-- `full_name` (TEXT)
-- `password` (TEXT, Hashed)
+- `email` (TEXT, Unique) - Added for user registration
+- `full_name` (TEXT) - Added with `migrate_add_fullname.php`
+- `password` (TEXT, Hashed with BCrypt)
+- `team_id` (INTEGER, Foreign Key) - User's team assignment
+- `role` (TEXT: admin/editor/viewer) - Added with `migrate_add_roles.php`
+- `is_active` (BOOLEAN, Default: 1) - Account status
+- `created_at` (DATETIME)
+
+**teams**
+- `id` (INTEGER, Primary Key)
+- `name` (TEXT, Unique)
+- `description` (TEXT)
 - `created_at` (DATETIME)
 
 **categories**
@@ -213,9 +236,50 @@ prompt_bank/
 
 ## Usage Guide
 
+### Getting Started
+
+1. **User Registration**
+   - Click "Register" on the login page
+   - Fill in username, email, full name, and password
+   - Select your team from the dropdown
+   - Click "Register" to create your account
+   - Rate limiting: 3 registrations per IP per hour
+
+2. **Login**
+   - Enter your username and password
+   - Click "Login" to access the application
+   - Your role and permissions are automatically loaded
+
+### Role-Based Permissions
+
+**Admin Role:**
+- Full access to all prompts (create, read, update, delete)
+- Manage users (create, update roles, deactivate accounts)
+- Manage teams (create, update, delete)
+- Manage categories (system and user-defined)
+- Access admin dashboard
+- Override all sharing restrictions
+
+**Editor Role:**
+- Create new prompts
+- Edit and delete own prompts
+- View shared prompts (based on permissions)
+- Edit prompts with explicit edit permission
+- Share own prompts with others
+- Request access to prompts
+- Standard collaboration features
+
+**Viewer Role:**
+- View own prompts (read-only)
+- View shared prompts with view permission
+- Copy prompts to clipboard
+- Request access to prompts
+- Cannot create, edit, or delete prompts
+- Cannot share prompts
+
 ### Managing Prompts
 
-1. **Add a New Prompt**
+1. **Add a New Prompt** (Admin/Editor only)
    - Click the "+ Add Prompt" button
    - Fill in the title, select a category, and enter your prompt text
    - Click "Save" to create the prompt
@@ -225,23 +289,40 @@ prompt_bank/
    - Switch between "Content" and "Version History" tabs
    - View version comparisons using the "View Diff" button
 
-3. **Edit a Prompt**
+3. **Edit a Prompt** (Admin/Editor with permissions)
    - Open the prompt details
    - Click "Edit" button
    - Make your changes and save
    - A new version will be automatically created
 
-4. **Delete a Prompt**
+4. **Delete a Prompt** (Admin/Editor - own prompts)
    - Open the prompt details
    - Click "Delete" button
    - Confirm the deletion
    - The prompt will be archived (soft delete)
+
+### User Management (Admin Only)
+
+1. **View All Users**
+   - Access admin dashboard
+   - View list of all users with roles and teams
+
+2. **Manage User Roles**
+   - Select user from list
+   - Change role (Admin/Editor/Viewer)
+   - Changes take effect immediately
+
+3. **Deactivate Users**
+   - Select user to deactivate
+   - Deactivated users cannot login
+   - Can be reactivated later
 
 ### Search and Filter
 
 - Use the search box to find prompts by title or content
 - Filter by category using the dropdown menu
 - Results update in real-time
+- Visibility filtered based on your role and permissions
 
 ### Version History
 
@@ -252,9 +333,11 @@ prompt_bank/
 
 ## Security Features
 
-- Password hashing using PHP's `password_hash()`
-- Session-based authentication
+- Role-based access control (RBAC) with three distinct roles
+- Password hashing using PHP's `password_hash()` with BCrypt
+- Session-based authentication with timeout
 - SQL injection prevention with prepared statements
+- Email validation and uniqueness enforcement
 - Input validation and sanitization
 - CSRF protection ready
 
@@ -288,7 +371,21 @@ You can add custom categories as needed (feature can be added via the categories
 - `POST /api/categories.php` - Create new category
 - `DELETE /api/categories.php?id={id}` - Delete category
 
-### Sharing & Collaboration (NEW)
+### User Management (Admin Only)
+- `GET /api/users.php` - List all users with roles and teams
+- `GET /api/users.php?id={id}` - Get specific user details
+- `POST /api/users.php` - Create new user (admin function)
+- `PUT /api/users.php` - Update user (role, team, status)
+- `DELETE /api/users.php?id={id}` - Deactivate user account
+
+### Teams
+- `GET /api/teams.php` - List all teams
+- `GET /api/teams.php?id={id}` - Get specific team details
+- `POST /api/teams.php` - Create new team (admin only)
+- `PUT /api/teams.php` - Update team details (admin only)
+- `DELETE /api/teams.php?id={id}` - Delete team (admin only)
+
+### Sharing & Collaboration
 
 **Shares**
 - `GET /api/shares.php?prompt_id={id}` - List shares for a prompt
@@ -359,7 +456,16 @@ You can add custom categories as needed (feature can be added via the categories
 
 ### Implementation Details
 
-**7 Phases Completed:**
+**User Management & Roles:**
+- User registration with email validation and rate limiting
+- Three-tier role system (Admin, Editor, Viewer)
+- Team assignment and management
+- Full-name support via `migrate_add_fullname.php`
+- Role enforcement via `migrate_add_roles.php`
+- Admin dashboard for user management
+- Account activation/deactivation system
+
+**Sharing & Collaboration (7 Phases):**
 - Phase 1: Database schema with 3 new tables
 - Phase 2: Backend sharing API (66/66 tests passing)
 - Phase 3: Enhanced prompts API with visibility filtering
@@ -369,11 +475,14 @@ You can add custom categories as needed (feature can be added via the categories
 - Phase 7: Smart notifications with sound and settings
 
 **Code Statistics:**
-- 3000+ lines of code added
+- 3000+ lines of code added (sharing/collaboration)
+- User management system fully integrated
 - 15+ files modified/created
-- 5 new API endpoints
+- 5 new API endpoints (sharing)
+- 2 API endpoints (users, teams)
 - 800+ lines in sharing.js
 - 400+ lines in collaborative.js
+- 3 database migrations (fullname, roles, sharing)
 
 For complete documentation, see `FINAL-DOCUMENTATION.md`
 
