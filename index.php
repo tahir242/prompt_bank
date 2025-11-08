@@ -212,6 +212,12 @@ session_start();
                     <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                         <h3 class="text-lg font-medium text-gray-900 mb-4" id="modalTitle">Add New Prompt</h3>
                         
+                        <!-- Editing Warning -->
+                        <div id="editingWarning" class="hidden mb-4"></div>
+                        
+                        <!-- Active Collaborators -->
+                        <div id="activeCollaborators" class="hidden mb-4"></div>
+                        
                         <div class="space-y-4">
                             <div>
                                 <label for="promptTitle" class="block text-sm font-medium text-gray-700">Title</label>
@@ -343,6 +349,12 @@ session_start();
 
                     <!-- Content Tab -->
                     <div id="contentTab" class="tab-content p-6">
+                        <!-- Editing Warning (Detail View) -->
+                        <div id="detailEditingWarning" class="hidden mb-4"></div>
+                        
+                        <!-- Active Collaborators (Detail View) -->
+                        <div id="detailActiveCollaborators" class="hidden mb-4"></div>
+                        
                         <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 border border-gray-200 shadow-inner">
                             <div class="prose prose-sm max-w-none" id="detailContent"></div>
                         </div>
@@ -945,6 +957,7 @@ session_start();
     <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
     <script src="assets/js/diff.js"></script>
     <script src="assets/js/sharing.js"></script>
+    <script src="assets/js/collaborative.js"></script>
     <script src="assets/js/app.js"></script>
 </body>
 </html>

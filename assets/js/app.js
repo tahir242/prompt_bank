@@ -264,6 +264,11 @@ async function initDashboard() {
         initSharingListeners();
     }
     
+    // Initialize collaborative features
+    if (typeof initCollaborativeFeatures === 'function') {
+        initCollaborativeFeatures();
+    }
+    
     await loadCategories();
     await loadPrompts();
 }
@@ -521,7 +526,7 @@ function renderPrompts(promptsToRender) {
         }
         
         return `
-        <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow relative group border-l-4 border-indigo-500">
+        <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow relative group border-l-4 border-indigo-500" data-prompt-id="${prompt.id}">
             <div class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button class="copy-card-btn p-2 bg-white rounded-md shadow-md hover:bg-green-50 transition-colors" 
                     data-prompt-id="${prompt.id}"
@@ -635,11 +640,86 @@ async function viewPrompt(id) {
         // Switch to content tab
         switchTab('content');
         
+        // Load and display active collaborators for this prompt
+        await loadDetailCollaborators(id);
+        
         // Open modal
         document.getElementById('detailModal').classList.remove('hidden');
     } catch (error) {
         console.error('Failed to load prompt:', error);
         alert('Failed to load prompt details');
+    }
+}
+
+// Load collaborators for detail view
+async function loadDetailCollaborators(promptId) {
+    try {
+        const response = await fetch(`api/collaborators.php?prompt_id=${promptId}`);
+        if (!response.ok) return;
+        
+        const collaborators = await response.json();
+        const otherCollaborators = collaborators.filter(c => c.user_id !== currentUser?.id);
+        
+        if (otherCollaborators.length > 0) {
+            displayDetailCollaborators(otherCollaborators);
+        } else {
+            hideDetailCollaborators();
+        }
+    } catch (error) {
+        console.error('Error loading detail collaborators:', error);
+    }
+}
+
+// Display collaborators in detail view
+function displayDetailCollaborators(collaborators) {
+    const container = document.getElementById('detailActiveCollaborators');
+    if (!container) return;
+    
+    const avatarList = collaborators.map(collab => {
+        const initials = getInitials(collab.full_name || collab.username);
+        const color = getColorForUser(collab.user_id);
+        
+        return `
+            <div class="flex items-center space-x-2 px-3 py-2 bg-amber-50 rounded-lg border border-amber-200">
+                <div class="w-8 h-8 rounded-full ${color} flex items-center justify-center text-white text-xs font-semibold animate-pulse">
+                    ${escapeHtml(initials)}
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900 truncate">
+                        ${escapeHtml(collab.full_name || collab.username)}
+                    </p>
+                    <p class="text-xs text-gray-500">
+                        Currently editing
+                    </p>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    container.innerHTML = `
+        <div class="space-y-2">
+            <div class="flex items-center space-x-2 text-sm text-amber-800">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                </svg>
+                <span class="font-semibold">
+                    ${collaborators.length} ${collaborators.length === 1 ? 'person is' : 'people are'} currently editing this prompt
+                </span>
+            </div>
+            <div class="space-y-2">
+                ${avatarList}
+            </div>
+        </div>
+    `;
+    container.classList.remove('hidden');
+}
+
+// Hide detail collaborators display
+function hideDetailCollaborators() {
+    const container = document.getElementById('detailActiveCollaborators');
+    if (container) {
+        container.classList.add('hidden');
+        container.innerHTML = '';
     }
 }
 
@@ -870,6 +950,11 @@ function openPromptModal(prompt = null) {
 }
 
 function closePromptModal() {
+    // Stop editing session if one is active
+    if (isEditingActive && currentEditingPromptId) {
+        stopEditing(currentEditingPromptId);
+    }
+    
     document.getElementById('promptModal').classList.add('hidden');
     document.getElementById('promptForm').reset();
     if (easyMDE) {
@@ -944,12 +1029,21 @@ async function handleCopyPrompt() {
 
 async function handleEditPrompt() {
     try {
+        // Check if others are editing before opening editor
+        const shouldContinue = await checkCollaboratorsBeforeEdit(currentPromptId);
+        if (!shouldContinue) {
+            return;
+        }
+        
         const response = await fetch(`api/prompts.php?id=${currentPromptId}`);
         const prompt = await response.json();
         
         editingPromptId = currentPromptId;
         closeDetailModal();
         openPromptModal(prompt);
+        
+        // Start tracking editing session
+        await startEditing(currentPromptId);
     } catch (error) {
         console.error('Failed to load prompt for editing:', error);
         alert('Failed to load prompt for editing');
