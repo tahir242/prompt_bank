@@ -69,6 +69,7 @@ if ($method === 'GET') {
         $sql = "
             SELECT DISTINCT p.*, c.name as category_name, u.username as owner_username,
                    (SELECT MAX(version_number) FROM prompt_versions WHERE prompt_id = p.id) as current_version,
+                   (SELECT COUNT(*) FROM prompt_shares WHERE prompt_id = p.id) as share_count,
                    CASE 
                        WHEN p.user_id = ? THEN 'owner'
                        WHEN p.visibility = 'public' THEN 'public'
@@ -76,7 +77,12 @@ if ($method === 'GET') {
                        WHEN EXISTS (SELECT 1 FROM prompt_shares WHERE prompt_id = p.id AND shared_with_user_id = ?) THEN 'shared'
                        WHEN EXISTS (SELECT 1 FROM prompt_shares WHERE prompt_id = p.id AND shared_with_team_id = ?) THEN 'team_shared'
                        ELSE 'none'
-                   END as access_reason
+                   END as access_reason,
+                   (SELECT ps.access_level FROM prompt_shares ps 
+                    WHERE ps.prompt_id = p.id 
+                    AND (ps.shared_with_user_id = ? OR ps.shared_with_team_id = ?)
+                    ORDER BY CASE WHEN ps.shared_with_user_id = ? THEN 0 ELSE 1 END
+                    LIMIT 1) as access_level
             FROM prompts p 
             LEFT JOIN categories c ON p.category_id = c.id 
             LEFT JOIN users u ON p.user_id = u.id
@@ -91,7 +97,7 @@ if ($method === 'GET') {
             )
         ";
         
-        $params = [$userId, $teamId, $userId, $teamId, $userId, $isAdmin ? 1 : 0, $teamId, $userId, $teamId];
+        $params = [$userId, $teamId, $userId, $teamId, $userId, $teamId, $userId, $userId, $isAdmin ? 1 : 0, $teamId, $userId, $teamId];
         
         if ($search) {
             $sql .= " AND (p.title LIKE ? OR p.content LIKE ?)";

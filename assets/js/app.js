@@ -259,6 +259,11 @@ async function initDashboard() {
     // Update UI based on role and permissions
     updateUIForRole();
     
+    // Initialize sharing listeners
+    if (typeof initSharingListeners === 'function') {
+        initSharingListeners();
+    }
+    
     await loadCategories();
     await loadPrompts();
 }
@@ -436,6 +441,85 @@ function renderPrompts(promptsToRender) {
             `;
         }
         
+        // Determine visibility badge
+        let visibilityBadge = '';
+        const visibility = prompt.visibility || 'private';
+        if (visibility === 'public') {
+            visibilityBadge = `
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-100 text-blue-800 border border-blue-300" title="Public - Anyone can view">
+                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                        <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
+                    </svg>
+                    Public
+                </span>
+            `;
+            
+            // Add warning if anonymous access is enabled
+            if (prompt.allow_anonymous) {
+                visibilityBadge += `
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300" title="Accessible to anonymous visitors">
+                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                        </svg>
+                        Anonymous
+                    </span>
+                `;
+            }
+        } else if (visibility === 'team') {
+            visibilityBadge = `
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-300" title="Team only - Visible to team members">
+                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
+                    </svg>
+                    Team
+                </span>
+            `;
+        } else {
+            visibilityBadge = `
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-800 border border-gray-300" title="Private - Only visible to you and shared users">
+                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/>
+                    </svg>
+                    Private
+                </span>
+            `;
+        }
+        
+        // Add share count badge if shared
+        let shareBadge = '';
+        if (prompt.share_count && prompt.share_count > 0) {
+            shareBadge = `
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-100 text-indigo-800 border border-indigo-300" title="Shared with ${prompt.share_count} ${prompt.share_count === 1 ? 'user/team' : 'users/teams'}">
+                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z"/>
+                    </svg>
+                    Shared ${prompt.share_count}
+                </span>
+            `;
+        }
+        
+        // Show access level if not owner
+        let accessLevelBadge = '';
+        if (prompt.user_id !== currentUser?.id && prompt.access_level) {
+            const level = prompt.access_level;
+            const levelColors = {
+                'view': 'bg-cyan-100 text-cyan-800 border-cyan-300',
+                'edit': 'bg-violet-100 text-violet-800 border-violet-300'
+            };
+            accessLevelBadge = `
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${levelColors[level] || 'bg-gray-100 text-gray-800 border-gray-300'}" title="You have ${level} access">
+                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        ${level === 'edit' ? 
+                            '<path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>' :
+                            '<path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>'
+                        }
+                    </svg>
+                    ${level.charAt(0).toUpperCase() + level.slice(1)}
+                </span>
+            `;
+        }
+        
         return `
         <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow relative group border-l-4 border-indigo-500">
             <div class="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -450,8 +534,11 @@ function renderPrompts(promptsToRender) {
             <div onclick="viewPrompt(${prompt.id})" class="cursor-pointer">
                 <div class="flex justify-between items-start mb-3 pr-8">
                     <h3 class="text-lg font-semibold text-gray-900 truncate flex-1">${escapeHtml(prompt.title)}</h3>
-                    <div class="flex items-center gap-2 ml-2 flex-shrink-0">
+                    <div class="flex items-center gap-1.5 ml-2 flex-shrink-0 flex-wrap justify-end">
                         ${ownershipBadge}
+                        ${accessLevelBadge}
+                        ${visibilityBadge}
+                        ${shareBadge}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 border border-gray-300">
                             <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
