@@ -32,10 +32,19 @@ function initSharingListeners() {
     document.getElementById('closeRequestAccessModalBtn')?.addEventListener('click', closeRequestAccessModal);
     document.getElementById('requestAccessForm')?.addEventListener('submit', handleRequestAccess);
     
+    // Notification settings
+    document.getElementById('notificationSettingsBtn')?.addEventListener('click', openNotificationSettings);
+    document.getElementById('closeNotificationSettingsBtn')?.addEventListener('click', closeNotificationSettings);
+    document.getElementById('soundToggle')?.addEventListener('click', toggleSoundSetting);
+    
+    // Load notification preferences
+    loadNotificationPreferences();
+    updateSoundToggleUI();
+    
     // Poll for access requests every 30 seconds
     setInterval(checkAccessRequests, 30000);
     
-    // Initial check
+    // Initial check (without notifications for first load)
     checkAccessRequests();
 }
 
@@ -403,14 +412,21 @@ async function saveShareSettings() {
 }
 
 // Check for pending access requests
+// Track seen access requests to detect new ones
+let seenAccessRequests = new Set();
+let lastAccessRequestCount = 0;
+let notificationSoundEnabled = true; // Can be made user-configurable
+
 async function checkAccessRequests() {
     try {
         const response = await fetch('api/access_requests.php');
         const data = await response.json();
         
         if (response.ok && data.requests) {
-            const pendingCount = data.requests.filter(r => r.status === 'pending').length;
+            const pendingRequests = data.requests.filter(r => r.status === 'pending');
+            const pendingCount = pendingRequests.length;
             
+            // Update badge
             const badge = document.getElementById('accessRequestsBadge');
             if (pendingCount > 0) {
                 badge.textContent = pendingCount;
@@ -418,9 +434,147 @@ async function checkAccessRequests() {
             } else {
                 badge.classList.add('hidden');
             }
+            
+            // Check for new requests (after initial load)
+            if (seenAccessRequests.size > 0) {
+                const newRequests = pendingRequests.filter(req => !seenAccessRequests.has(req.id));
+                
+                if (newRequests.length > 0) {
+                    // Show notification for new requests
+                    showAccessRequestNotification(newRequests);
+                    
+                    // Play sound if enabled
+                    if (notificationSoundEnabled) {
+                        playNotificationSound();
+                    }
+                    
+                    // Pulse the access requests button
+                    pulseAccessRequestsButton();
+                }
+            }
+            
+            // Update seen requests
+            seenAccessRequests.clear();
+            pendingRequests.forEach(req => seenAccessRequests.add(req.id));
+            lastAccessRequestCount = pendingCount;
         }
     } catch (error) {
         console.error('Error checking access requests:', error);
+    }
+}
+
+// Show notification toast for new access requests
+function showAccessRequestNotification(newRequests) {
+    const count = newRequests.length;
+    const message = count === 1 
+        ? `${newRequests[0].requester_username} requested access to "${truncateText(newRequests[0].prompt_title, 30)}"`
+        : `${count} new access requests`;
+    
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = 'fixed top-20 right-4 z-50 max-w-md bg-white rounded-lg shadow-2xl border-l-4 border-indigo-500 p-4 animate-slide-in-right';
+    notification.innerHTML = `
+        <div class="flex items-start">
+            <div class="flex-shrink-0">
+                <svg class="w-6 h-6 text-indigo-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/>
+                </svg>
+            </div>
+            <div class="ml-3 flex-1">
+                <p class="text-sm font-medium text-gray-900">
+                    New Access Request${count > 1 ? 's' : ''}
+                </p>
+                <p class="mt-1 text-sm text-gray-600">
+                    ${message}
+                </p>
+                <div class="mt-3 flex gap-2">
+                    <button onclick="openAccessRequestsModalFromNotification()" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+                        Review
+                    </button>
+                    <button onclick="this.closest('.animate-slide-in-right').remove()" class="text-sm font-medium text-gray-600 hover:text-gray-500">
+                        Dismiss
+                    </button>
+                </div>
+            </div>
+            <button onclick="this.closest('.animate-slide-in-right').remove()" class="ml-4 flex-shrink-0 text-gray-400 hover:text-gray-500">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                </svg>
+            </button>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-dismiss after 10 seconds
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.classList.add('animate-fade-out');
+            setTimeout(() => notification.remove(), 300);
+        }
+    }, 10000);
+}
+
+// Helper function to open modal from notification
+function openAccessRequestsModalFromNotification() {
+    // Remove notification
+    document.querySelectorAll('.animate-slide-in-right').forEach(n => n.remove());
+    // Open modal
+    openAccessRequestsModal();
+}
+
+// Truncate text helper
+function truncateText(text, maxLength) {
+    if (!text) return '';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+}
+
+// Play notification sound
+function playNotificationSound() {
+    // Create a simple beep using Web Audio API
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800; // Frequency in Hz
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (error) {
+        console.log('Notification sound not supported:', error);
+    }
+}
+
+// Pulse the access requests button
+function pulseAccessRequestsButton() {
+    const button = document.getElementById('accessRequestsBtn');
+    if (button) {
+        button.classList.add('animate-pulse');
+        setTimeout(() => {
+            button.classList.remove('animate-pulse');
+        }, 3000); // Pulse for 3 seconds
+    }
+}
+
+// Toggle notification sound
+function toggleNotificationSound(enabled) {
+    notificationSoundEnabled = enabled;
+    localStorage.setItem('notificationSoundEnabled', enabled);
+}
+
+// Load notification preferences on init
+function loadNotificationPreferences() {
+    const savedPref = localStorage.getItem('notificationSoundEnabled');
+    if (savedPref !== null) {
+        notificationSoundEnabled = savedPref === 'true';
     }
 }
 
@@ -610,4 +764,47 @@ function showError(elementId, message) {
     setTimeout(() => {
         errorDiv.classList.add('hidden');
     }, 5000);
+}
+
+// Notification Settings Modal
+function openNotificationSettings() {
+    document.getElementById('notificationSettingsModal').classList.remove('hidden');
+    updateSoundToggleUI();
+}
+
+function closeNotificationSettings() {
+    document.getElementById('notificationSettingsModal').classList.add('hidden');
+}
+
+function toggleSoundSetting() {
+    notificationSoundEnabled = !notificationSoundEnabled;
+    toggleNotificationSound(notificationSoundEnabled);
+    updateSoundToggleUI();
+    
+    // Show confirmation
+    showToast(
+        notificationSoundEnabled ? 'Notification sound enabled' : 'Notification sound disabled',
+        'success'
+    );
+}
+
+function updateSoundToggleUI() {
+    const toggle = document.getElementById('soundToggle');
+    const span = toggle?.querySelector('span');
+    
+    if (!toggle || !span) return;
+    
+    if (notificationSoundEnabled) {
+        toggle.classList.remove('bg-gray-200');
+        toggle.classList.add('bg-indigo-600');
+        toggle.setAttribute('aria-checked', 'true');
+        span.classList.remove('translate-x-0');
+        span.classList.add('translate-x-5');
+    } else {
+        toggle.classList.remove('bg-indigo-600');
+        toggle.classList.add('bg-gray-200');
+        toggle.setAttribute('aria-checked', 'false');
+        span.classList.remove('translate-x-5');
+        span.classList.add('translate-x-0');
+    }
 }
