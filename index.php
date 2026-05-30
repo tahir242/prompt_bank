@@ -1,5 +1,28 @@
 <?php
+require_once __DIR__ . '/database/db.php';
+session_set_cookie_params(['path' => '/']);
 session_start();
+
+$initialState = null;
+if (isset($_SESSION['user_id'])) {
+    $userRole = getUserRole($_SESSION['user_id']);
+    if ($userRole && $userRole['is_active']) {
+        $initialState = [
+            'user' => [
+                'id' => $_SESSION['user_id'],
+                'username' => $_SESSION['username'],
+                'role_name' => $userRole['role_name'],
+                'permissions' => $userRole['permissions'],
+                'team_id' => $userRole['team_id'],
+                'team_name' => $userRole['team_name']
+            ]
+        ];
+    } else {
+        // User was deactivated or deleted
+        session_destroy();
+        unset($_SESSION['user_id']);
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -7,6 +30,7 @@ session_start();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>System Prompt Bank</title>
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
     <link rel="stylesheet" href="assets/css/styles.css">
@@ -632,9 +656,14 @@ session_start();
                     
                     <!-- Users Tab -->
                     <div id="usersTab" class="admin-tab-content">
-                        <div class="mb-4">
-                            <h4 class="text-lg font-semibold text-gray-900 mb-2">User Management</h4>
-                            <p class="text-sm text-gray-600">Manage user roles, team assignments, and account status.</p>
+                        <div class="mb-4 flex justify-between items-center">
+                            <div>
+                                <h4 class="text-lg font-semibold text-gray-900 mb-2">User Management</h4>
+                                <p class="text-sm text-gray-600">Manage user roles, team assignments, and account status.</p>
+                            </div>
+                            <button id="addUserBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                                + Add User
+                            </button>
                         </div>
 
                         <!-- Users Table -->
@@ -742,6 +771,68 @@ session_start();
                             <button type="submit" 
                                 class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
                                 Save Changes
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add User Modal -->
+    <div id="addUserModal" class="hidden fixed z-30 inset-0 overflow-y-auto">
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-900 bg-opacity-75 transition-opacity"></div>
+            
+            <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div class="bg-white px-6 py-4">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Add User</h3>
+                    
+                    <form id="addUserForm">
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                            <input type="text" id="addUserUsername" required 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                                placeholder="Choose a username">
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                            <input type="text" id="addUserFullName" required 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                                placeholder="User's full name">
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                            <input type="password" id="addUserPassword" required 
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                                placeholder="At least 6 characters">
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                            <select id="addUserRole" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500">
+                                <!-- Roles will be populated here -->
+                            </select>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Team</label>
+                            <select id="addUserTeam" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500">
+                                <option value="">No Team</option>
+                                <!-- Teams will be populated here -->
+                            </select>
+                        </div>
+
+                        <div class="flex gap-3 justify-end">
+                            <button type="button" id="cancelAddUserBtn" 
+                                class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium">
+                                Cancel
+                            </button>
+                            <button type="submit" 
+                                class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium">
+                                Add User
                             </button>
                         </div>
                     </form>
@@ -1013,6 +1104,9 @@ session_start();
     <script src="assets/js/diff.js"></script>
     <script src="assets/js/sharing.js"></script>
     <script src="assets/js/collaborative.js"></script>
+    <script>
+        window.INITIAL_STATE = <?php echo json_encode($initialState); ?>;
+    </script>
     <script src="assets/js/app.js"></script>
 </body>
 </html>

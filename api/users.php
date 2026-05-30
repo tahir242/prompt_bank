@@ -46,6 +46,94 @@ if ($method === 'GET') {
     }
 }
 
+// POST - Create user (Admin only)
+elseif ($method === 'POST') {
+    try {
+        // Require Admin role
+        $adminUser = requireRole(['Admin']);
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        $username = $input['username'] ?? '';
+        $fullName = $input['full_name'] ?? '';
+        $password = $input['password'] ?? '';
+        $roleId = $input['role_id'] ?? null;
+        $teamId = $input['team_id'] ?? null;
+        
+        // Validation
+        if (empty($username) || empty($password)) {
+            jsonResponse(['error' => 'Username and password are required'], 400);
+        }
+        
+        if (strlen($password) < 6) {
+            jsonResponse(['error' => 'Password must be at least 6 characters long'], 400);
+        }
+        
+        if (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', $username)) {
+            jsonResponse(['error' => 'Username must be 3-20 characters long and contain only letters, numbers, and underscores'], 400);
+        }
+        
+        // Validate role exists if provided, otherwise default to Viewer (ID 3)
+        if (empty($roleId)) {
+            $roleStmt = $db->query("SELECT id FROM roles WHERE name = 'Viewer'");
+            $roleData = $roleStmt->fetch();
+            $roleId = $roleData ? $roleData['id'] : 3;
+        } else {
+            $roleStmt = $db->prepare("SELECT id FROM roles WHERE id = ?");
+            $roleStmt->execute([$roleId]);
+            if (!$roleStmt->fetch()) {
+                jsonResponse(['error' => 'Invalid role ID'], 400);
+            }
+        }
+        
+        // Validate team exists if provided
+        if (!empty($teamId)) {
+            $teamStmt = $db->prepare("SELECT id FROM teams WHERE id = ?");
+            $teamStmt->execute([$teamId]);
+            if (!$teamStmt->fetch()) {
+                jsonResponse(['error' => 'Invalid team ID'], 400);
+            }
+        } else {
+            $teamId = null; // Ensure null if empty
+        }
+        
+        // Check if username already exists
+        $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
+        $stmt->execute([$username]);
+        if ($stmt->fetch()) {
+            jsonResponse(['error' => 'Username already exists'], 409);
+        }
+        
+        // Create user
+        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+        $stmt = $db->prepare("
+            INSERT INTO users (username, full_name, password_hash, role_id, team_id, is_active)
+            VALUES (?, ?, ?, ?, ?, 1)
+        ");
+        $stmt->execute([$username, $fullName, $passwordHash, $roleId, $teamId]);
+        
+        $newUserId = $db->lastInsertId();
+        
+        // Log audit event
+        logAudit($_SESSION['user_id'], 'user_created', "Created user $username (ID: $newUserId)");
+        
+        jsonResponse([
+            'success' => true,
+            'message' => 'User created successfully',
+            'user' => [
+                'id' => $newUserId,
+                'username' => $username,
+                'full_name' => $fullName
+            ]
+        ], 201);
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'Forbidden') !== false || strpos($e->getMessage(), 'Unauthorized') !== false) {
+            jsonResponse(['error' => $e->getMessage()], 403);
+        } else {
+            jsonResponse(['error' => 'Failed to create user: ' . $e->getMessage()], 500);
+        }
+    }
+}
+
 // PUT - Update user (role, team, status) (Admin only)
 elseif ($method === 'PUT') {
     try {

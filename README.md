@@ -1,509 +1,128 @@
-# 📝 System Prompt Bank
+# System Prompt Bank
 
-A modern, feature-rich web application for managing and organizing system prompts with version control, markdown support, and intuitive category management.
+A modern web application for managing system prompts with version history, sharing controls, and collaborative editing.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)
+![PHP](https://img.shields.io/badge/PHP-7.4%2B-blue.svg)
 ![SQLite](https://img.shields.io/badge/SQLite-3-blue.svg)
 
-## ✨ Features
+## Overview
 
-### 🎯 Core Functionality
-- **Prompt Management**: Create, read, update, and delete system prompts with ease
-- **Version Control**: Automatic versioning with complete history tracking for every change
-- **Diff Comparison**: Visual side-by-side comparison between any two versions
-- **Category Organization**: Organize prompts with both system and user-defined categories
-- **Rich Text Editor**: Built-in markdown editor (EasyMDE) with live preview
-- **Search & Filter**: Quick search across prompts and filter by categories
-- **Copy to Clipboard**: One-click copying from cards or detail view with visual feedback
+System Prompt Bank helps teams organize and share system prompts with a clean SPA interface, rich markdown editing, and a full audit trail of prompt changes.
 
-### 🤝 Sharing & Collaboration (NEW!)
-- **Granular Sharing**: Share prompts with specific users or teams with view/edit permissions
-- **Visibility Control**: Three-level access (Private, Team, Public) with configurable settings
-- **Access Requests**: Users can request access to prompts with approval workflow
-- **Real-time Collaboration**: See who's currently editing with live presence indicators
-- **Anonymous Sharing**: Optional public sharing with warning for sensitive content
-- **Smart Notifications**: Toast notifications with sound for access requests (configurable)
-- **Team Permissions**: Team-wide visibility with customizable access levels
-- **Share Management**: Add/remove shares, track share counts with visual badges
+## Features
 
-### 🎨 Modern UI/UX
-- **Single Page Application**: Smooth, responsive interface without page reloads
-- **Beautiful Modals**: Gradient headers with backdrop blur effects
-- **Toast Notifications**: Real-time feedback for all actions
-- **Card-Based Layout**: Clean grid display with hover effects and version badges
-- **Inline Editing**: Edit categories directly without separate forms
-- **Responsive Design**: Works perfectly on desktop, tablet, and mobile devices
+- Prompt CRUD with versioning and diff comparison
+- Markdown editor with live preview
+- Category organization and search
+- Role-based access control (admin/editor/viewer)
+- Prompt sharing with user/team permissions
+- Access request workflow and collaboration presence
+- Public prompt access with optional anonymous sharing
 
-### � User Management & Authentication
-- **User Registration**: Self-service account creation with full validation
-- **Email Validation**: Proper email format checking and uniqueness enforcement
-- **Full Name Support**: Users can set display names (migrated with `migrate_add_fullname.php`)
-- **Team Assignment**: Users belong to teams for collaboration
-- **Role-Based Access Control (RBAC)**: Three roles (Admin, Editor, Viewer) with distinct permissions
-- **Session-based Authentication**: Secure user login system with PHP sessions
-- **Password Hashing**: BCrypt password protection with strong algorithm
-- **Rate Limiting**: IP-based protection against spam registrations (3 per hour)
-- **Admin Dashboard**: Manage users, assign roles, deactivate accounts
-- **Role Enforcement**: API-level permission checks on all protected endpoints
-
-### 🔐 Security & Performance
-- **SQL Injection Prevention**: Prepared statements throughout the codebase
-- **XSS Protection**: HTML escaping for all user-generated content
-- **CSRF Protection**: Session validation on all state-changing operations
-- **System Category Protection**: Prevents accidental modification of core categories
-- **Database Transactions**: Atomic operations for data integrity
-- **SQLite WAL Mode**: Write-Ahead Logging for better concurrency
-- **Foreign Key Enforcement**: Referential integrity at database level
-- **Secure Password Reset**: Token-based password recovery (ready for implementation)
-
-### 📊 Advanced Features
-- **Metadata View**: Comprehensive statistics including character, word, and line counts
-- **Version Badges**: Visual indicators showing current version on prompt cards
-- **User Tracking**: Track who created and last modified each prompt
-- **Helpful Empty States**: Clear messages when no content exists
-- **Graceful Error Handling**: User-friendly error messages and recovery
-
-## 🚀 Quick Start
-
-### Prerequisites
-- PHP 7.4 or higher with SQLite extension
-- Web server (Apache, Nginx) or PHP built-in server
-- Modern web browser (Chrome, Firefox, Safari, Edge)
-
-## Technology Stack
-
-### Backend
-- **PHP 7.4+/8.x**: Server-side logic
-- **SQLite 3**: Lightweight, zero-configuration database
-- **RESTful API**: Clean, organized API architecture
-
-### Frontend
-- **Vanilla JavaScript (ES6)**: No heavy framework dependencies
-- **TailwindCSS (CDN)**: Utility-first CSS framework
-- **EasyMDE v2.x**: Markdown editor with toolbar and preview
-- **marked.js v9.x**: Fast markdown-to-HTML parser
-
-### Architecture
-- **Single Page Application (SPA)**: Dynamic content loading without page refreshes
-- **RESTful API**: Separate API endpoints for clean architecture
-- **Session Management**: Secure authentication handling
-
-## Installation
+## Quick Start
 
 ### Prerequisites
 
-- XAMPP (or similar PHP environment)
-- PHP 7.4 or higher
-- SQLite support enabled in PHP
+- PHP 7.4+ with SQLite enabled
+- Web server (Apache/Nginx) or PHP built-in server
+- Modern browser
 
-### Setup Instructions
+### Setup
 
-1. **Clone or extract the project** to your XAMPP htdocs folder:
-   ```
-   c:\xampp\htdocs\prompt_bank\
-   ```
+1. Place the project under your web root, for example:
 
-2. **Initialize the database**:
-   - Open your browser and navigate to:
-     ```
-     http://localhost/prompt_bank/database/init_db.php
-     ```
-   - This will create the SQLite database and populate it with default data
-   - Default user credentials:
-     - Username: `admin`
-     - Password: `admin123`
+```
+c:\xampp\htdocs\prompt_bank\
+```
 
-3. **Access the application**:
-   ```
-   http://localhost/prompt_bank/
-   ```
+2. Initialize the database:
 
-4. **Login** with the default credentials and start managing your prompts!
+```
+http://localhost/prompt_bank/database/init_db.php
+```
+
+3. Open the app:
+
+```
+http://localhost/prompt_bank/
+```
+
+4. Default login:
+
+```
+Username: admin
+Password: admin123
+```
+
+Change the default credentials after first login.
+
+## Configuration
+
+- Update [config.php](config.php) for environment-specific settings.
+- The SQLite database is created at `database/prompts.db` after initialization.
 
 ## Project Structure
 
 ```
 prompt_bank/
-│
-├── index.php                      # Main entry (login and SPA container)
-├── config.php                     # Configuration settings
-├── api/
-│   ├── login.php                  # Authentication endpoint
-│   ├── logout.php                 # Logout endpoint
-│   ├── register.php               # User registration endpoint
-│   ├── prompts.php                # CRUD endpoints for prompts (enhanced with visibility)
-│   ├── categories.php             # Category management endpoints
-│   ├── shares.php                 # NEW: Share management API
-│   ├── access_requests.php        # NEW: Access request workflow API
-│   ├── collaborators.php          # NEW: Real-time presence tracking API
-│   ├── public_prompts.php         # NEW: Anonymous public access API
-│   ├── users.php                  # User lookup API
-│   └── teams.php                  # Team lookup API
-├── assets/
-│   ├── css/
-│   │   └── styles.css             # Custom CSS styles + animations
-│   └── js/
-│       ├── app.js                 # ES6 SPA logic (1700+ lines)
-│       ├── sharing.js             # NEW: Sharing UI module (800+ lines)
-│       ├── collaborative.js       # NEW: Collaboration module (400+ lines)
-│       └── diff.js                # Diff comparison library
-├── database/
-│   ├── init_db.php                # Database initialization script
-│   ├── db.php                     # Database connection + sharing helpers
-│   ├── migrate_add_sharing.php    # NEW: Sharing feature migration
-│   ├── validate_schema.php        # Schema validation tool
-│   └── prompts.db                 # SQLite database (created after init)
-├── plans/                         # Feature implementation documentation
-└── templates/
-    └── components/                # HTML fragments (for future use)
+├── api/                 # REST endpoints
+├── assets/              # CSS and JS
+├── database/            # DB setup and migrations
+├── templates/           # HTML fragments
+├── tests/               # PHP tests
+├── index.php            # App entry
+└── config.php           # Configuration
 ```
 
-## Database Schema
+## API Overview
 
-### Tables
+Authentication
 
-**users**
-- `id` (INTEGER, Primary Key)
-- `username` (TEXT, Unique)
-- `email` (TEXT, Unique) - Added for user registration
-- `full_name` (TEXT) - Added with `migrate_add_fullname.php`
-- `password` (TEXT, Hashed with BCrypt)
-- `team_id` (INTEGER, Foreign Key) - User's team assignment
-- `role` (TEXT: admin/editor/viewer) - Added with `migrate_add_roles.php`
-- `is_active` (BOOLEAN, Default: 1) - Account status
-- `created_at` (DATETIME)
+- POST /api/login.php
+- POST /api/register.php
+- GET /api/logout.php
 
-**teams**
-- `id` (INTEGER, Primary Key)
-- `name` (TEXT, Unique)
-- `description` (TEXT)
-- `created_at` (DATETIME)
+Prompts
 
-**categories**
-- `id` (INTEGER, Primary Key)
-- `name` (TEXT, Unique)
-- `is_system` (BOOLEAN)
-- `created_at` (DATETIME)
+- GET /api/prompts.php
+- GET /api/prompts.php?id={id}
+- POST /api/prompts.php
+- PUT /api/prompts.php
+- DELETE /api/prompts.php?id={id}
 
-**prompts**
-- `id` (INTEGER, Primary Key)
-- `title` (TEXT)
-- `content` (TEXT)
-- `category_id` (INTEGER, Foreign Key)
-- `user_id` (INTEGER, Foreign Key)
-- `team_id` (INTEGER, Foreign Key)
-- `visibility` (TEXT: private/team/public) - NEW
-- `allow_anonymous` (BOOLEAN) - NEW
-- `team_access_level` (TEXT: view/edit) - NEW
-- `created_at` (DATETIME)
-- `updated_at` (DATETIME)
-- `is_archived` (BOOLEAN)
+Sharing and collaboration
 
-**prompt_versions**
-- `id` (INTEGER, Primary Key)
-- `prompt_id` (INTEGER, Foreign Key)
-- `version_number` (INTEGER)
-- `content` (TEXT)
-- `user_id` (INTEGER, Foreign Key)
-- `created_at` (DATETIME)
+- GET /api/shares.php?prompt_id={id}
+- POST /api/shares.php
+- DELETE /api/shares.php?id={id}
+- GET /api/access_requests.php
+- POST /api/access_requests.php
+- PUT /api/access_requests.php
+- GET /api/collaborators.php?prompt_id={id}
 
-**prompt_shares** (NEW)
-- `id` (INTEGER, Primary Key)
-- `prompt_id` (INTEGER, Foreign Key)
-- `shared_with_user_id` (INTEGER, Foreign Key, nullable)
-- `shared_with_team_id` (INTEGER, Foreign Key, nullable)
-- `access_level` (TEXT: view/edit)
-- `shared_by_user_id` (INTEGER, Foreign Key)
-- `created_at` (DATETIME)
+## Development
 
-**access_requests** (NEW)
-- `id` (INTEGER, Primary Key)
-- `prompt_id` (INTEGER, Foreign Key)
-- `requester_user_id` (INTEGER, Foreign Key)
-- `status` (TEXT: pending/approved/denied)
-- `message` (TEXT)
-- `reviewed_by_user_id` (INTEGER, Foreign Key, nullable)
-- `reviewed_at` (DATETIME, nullable)
-- `created_at` (DATETIME)
+Run tests:
 
-**prompt_collaborators** (NEW)
-- `id` (INTEGER, Primary Key)
-- `prompt_id` (INTEGER, Foreign Key)
-- `user_id` (INTEGER, Foreign Key)
-- `last_activity` (DATETIME)
-- `created_at` (DATETIME)
+```
+php tests/test_*.php
+```
 
-## Usage Guide
+## Security
 
-### Getting Started
+Please report vulnerabilities privately. See [SECURITY.md](SECURITY.md).
 
-1. **User Registration**
-   - Click "Register" on the login page
-   - Fill in username, email, full name, and password
-   - Select your team from the dropdown
-   - Click "Register" to create your account
-   - Rate limiting: 3 registrations per IP per hour
+## Contributing
 
-2. **Login**
-   - Enter your username and password
-   - Click "Login" to access the application
-   - Your role and permissions are automatically loaded
+See [CONTRIBUTING.md](CONTRIBUTING.md) for workflow, style, and testing guidance.
 
-### Role-Based Permissions
+## Roadmap
 
-**Admin Role:**
-- Full access to all prompts (create, read, update, delete)
-- Manage users (create, update roles, deactivate accounts)
-- Manage teams (create, update, delete)
-- Manage categories (system and user-defined)
-- Access admin dashboard
-- Override all sharing restrictions
-
-**Editor Role:**
-- Create new prompts
-- Edit and delete own prompts
-- View shared prompts (based on permissions)
-- Edit prompts with explicit edit permission
-- Share own prompts with others
-- Request access to prompts
-- Standard collaboration features
-
-**Viewer Role:**
-- View own prompts (read-only)
-- View shared prompts with view permission
-- Copy prompts to clipboard
-- Request access to prompts
-- Cannot create, edit, or delete prompts
-- Cannot share prompts
-
-### Managing Prompts
-
-1. **Add a New Prompt** (Admin/Editor only)
-   - Click the "+ Add Prompt" button
-   - Fill in the title, select a category, and enter your prompt text
-   - Click "Save" to create the prompt
-
-2. **View Prompt Details**
-   - Click on any prompt card to view full details
-   - Switch between "Content" and "Version History" tabs
-   - View version comparisons using the "View Diff" button
-
-3. **Edit a Prompt** (Admin/Editor with permissions)
-   - Open the prompt details
-   - Click "Edit" button
-   - Make your changes and save
-   - A new version will be automatically created
-
-4. **Delete a Prompt** (Admin/Editor - own prompts)
-   - Open the prompt details
-   - Click "Delete" button
-   - Confirm the deletion
-   - The prompt will be archived (soft delete)
-
-### User Management (Admin Only)
-
-1. **View All Users**
-   - Access admin dashboard
-   - View list of all users with roles and teams
-
-2. **Manage User Roles**
-   - Select user from list
-   - Change role (Admin/Editor/Viewer)
-   - Changes take effect immediately
-
-3. **Deactivate Users**
-   - Select user to deactivate
-   - Deactivated users cannot login
-   - Can be reactivated later
-
-### Search and Filter
-
-- Use the search box to find prompts by title or content
-- Filter by category using the dropdown menu
-- Results update in real-time
-- Visibility filtered based on your role and permissions
-
-### Version History
-
-- Each edit creates a new version
-- View all versions in the "Version History" tab
-- Compare versions side-by-side using the diff viewer
-- Changes are highlighted in green (additions) and red (deletions)
-
-## Security Features
-
-- Role-based access control (RBAC) with three distinct roles
-- Password hashing using PHP's `password_hash()` with BCrypt
-- Session-based authentication with timeout
-- SQL injection prevention with prepared statements
-- Email validation and uniqueness enforcement
-- Input validation and sanitization
-- CSRF protection ready
-
-## Default Categories
-
-The system comes with these pre-defined categories:
-- System Setup
-- Debugging
-- Creative Writing
-- Code Review
-- Documentation
-
-You can add custom categories as needed (feature can be added via the categories API endpoint).
-
-## API Endpoints
-
-### Authentication
-- `POST /api/login.php` - User login
-- `POST /api/register.php` - User registration (new users)
-- `GET /api/logout.php` - User logout
-
-### Prompts
-- `GET /api/prompts.php` - List all prompts
-- `GET /api/prompts.php?id={id}` - Get single prompt with versions
-- `POST /api/prompts.php` - Create new prompt
-- `PUT /api/prompts.php` - Update existing prompt
-- `DELETE /api/prompts.php?id={id}` - Delete (archive) prompt
-
-### Categories
-- `GET /api/categories.php` - List all categories
-- `POST /api/categories.php` - Create new category
-- `DELETE /api/categories.php?id={id}` - Delete category
-
-### User Management (Admin Only)
-- `GET /api/users.php` - List all users with roles and teams
-- `GET /api/users.php?id={id}` - Get specific user details
-- `POST /api/users.php` - Create new user (admin function)
-- `PUT /api/users.php` - Update user (role, team, status)
-- `DELETE /api/users.php?id={id}` - Deactivate user account
-
-### Teams
-- `GET /api/teams.php` - List all teams
-- `GET /api/teams.php?id={id}` - Get specific team details
-- `POST /api/teams.php` - Create new team (admin only)
-- `PUT /api/teams.php` - Update team details (admin only)
-- `DELETE /api/teams.php?id={id}` - Delete team (admin only)
-
-### Sharing & Collaboration
-
-**Shares**
-- `GET /api/shares.php?prompt_id={id}` - List shares for a prompt
-- `POST /api/shares.php` - Create new share (user or team)
-- `DELETE /api/shares.php?id={id}` - Remove share
-
-**Access Requests**
-- `GET /api/access_requests.php` - List requests (incoming for owners, outgoing for requesters)
-- `GET /api/access_requests.php?prompt_id={id}` - List requests for specific prompt
-- `POST /api/access_requests.php` - Request access to a prompt
-- `PUT /api/access_requests.php` - Approve/deny access request
-
-**Collaborators**
-- `GET /api/collaborators.php?prompt_id={id}` - List active editors
-- `POST /api/collaborators.php` - Register/update presence (heartbeat)
-- `DELETE /api/collaborators.php?prompt_id={id}` - Remove presence
-
-**Public Access**
-- `GET /api/public_prompts.php` - Anonymous access to public prompts (no auth required)
-
-## Troubleshooting
-
-**Database not found error:**
-- Make sure you've run the initialization script: `http://localhost/prompt_bank/database/init_db.php`
-
-**Login not working:**
-- Verify the database was initialized properly
-- Check that PHP sessions are enabled
-- Try using the default credentials: admin / admin123
-
-**Changes not saving:**
-- Check browser console for JavaScript errors
-- Verify API endpoints are accessible
-- Check file permissions on the database file
-
-**Diff view not working:**
-- Ensure `diff.js` is loaded before `app.js`
-- Check browser console for JavaScript errors
-
-## Sharing & Collaboration Features
-
-### Quick Start Guide
-
-1. **Share a Prompt**
-   - Open any prompt you own
-   - Click the "Share" button
-   - Select visibility level (Private/Team/Public)
-   - Add specific users or teams with view/edit permissions
-   - Enable anonymous access for public prompts (optional)
-
-2. **Request Access**
-   - View any inaccessible prompt
-   - Click "Request Access"
-   - Add a message explaining why you need access
-   - Wait for owner approval
-
-3. **Collaborate in Real-Time**
-   - Open any prompt with edit access
-   - See who's currently editing with live avatars
-   - Get warnings before editing if others are active
-   - Your presence is automatically tracked
-
-4. **Manage Notifications**
-   - Click the bell icon to view pending access requests
-   - Toast notifications appear for new requests
-   - Configure notification sound in settings (gear icon)
-   - Approve or deny requests with one click
-
-### Implementation Details
-
-**User Management & Roles:**
-- User registration with email validation and rate limiting
-- Three-tier role system (Admin, Editor, Viewer)
-- Team assignment and management
-- Full-name support via `migrate_add_fullname.php`
-- Role enforcement via `migrate_add_roles.php`
-- Admin dashboard for user management
-- Account activation/deactivation system
-
-**Sharing & Collaboration (7 Phases):**
-- Phase 1: Database schema with 3 new tables
-- Phase 2: Backend sharing API (66/66 tests passing)
-- Phase 3: Enhanced prompts API with visibility filtering
-- Phase 4: Real-time collaborative editing tracking
-- Phase 5: Frontend sharing UI with modals and badges
-- Phase 6: Collaborative editing indicators and warnings
-- Phase 7: Smart notifications with sound and settings
-
-**Code Statistics:**
-- 3000+ lines of code added (sharing/collaboration)
-- User management system fully integrated
-- 15+ files modified/created
-- 5 new API endpoints (sharing)
-- 2 API endpoints (users, teams)
-- 800+ lines in sharing.js
-- 400+ lines in collaborative.js
-- 3 database migrations (fullname, roles, sharing)
-
-For complete documentation, see `FINAL-DOCUMENTATION.md`
-
-## Future Enhancements
-
-- WebSocket integration for instant updates
-- Email notifications for access requests
-- Desktop notifications via Browser API
-- Share templates and bulk operations
-- Time-limited shares with expiration
-- Activity feed and audit logging
-- AI-based category suggestions
-- Dark/light mode themes
-- Prompt restore (rollback to previous version)
 - Import/export functionality
-- Advanced search filters
+- WebSocket-based collaboration updates
+- Activity feed and audit logging
 
 ## License
 
-This project is open source and available for educational purposes.
-
-## Support
-
-For issues or questions, please check the code comments or modify as needed for your use case.
+Licensed under the MIT License. See [LICENSE](LICENSE).

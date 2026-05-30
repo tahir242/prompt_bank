@@ -19,7 +19,10 @@ function getDatabase() {
 }
 
 function requireAuth() {
-    session_start();
+    if (session_status() === PHP_SESSION_NONE) {
+        session_set_cookie_params(['path' => '/']);
+        session_start();
+    }
     if (!isset($_SESSION['user_id'])) {
         http_response_code(401);
         die(json_encode(['error' => 'Unauthorized']));

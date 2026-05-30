@@ -10,6 +10,13 @@ let easyMDE = null;
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
+    // Restore state from PHP if available
+    if (window.INITIAL_STATE && window.INITIAL_STATE.user) {
+        currentUser = window.INITIAL_STATE.user;
+        userRole = currentUser.role_name;
+        userPermissions = currentUser.permissions || {};
+    }
+    
     checkSession();
     setupEventListeners();
 });
@@ -89,6 +96,11 @@ function setupEventListeners() {
     // User Management
     document.getElementById('editUserForm')?.addEventListener('submit', handleEditUser);
     document.getElementById('cancelEditUserBtn')?.addEventListener('click', closeEditUserModal);
+    
+    // Add User functionality
+    document.getElementById('addUserBtn')?.addEventListener('click', openAddUserModal);
+    document.getElementById('addUserForm')?.addEventListener('submit', handleAddUser);
+    document.getElementById('cancelAddUserBtn')?.addEventListener('click', closeAddUserModal);
     
     // Team Management
     document.getElementById('addTeamBtn')?.addEventListener('click', openAddTeamModal);
@@ -632,7 +644,7 @@ async function viewPrompt(id) {
         updatePromptActionButtons(prompt);
         
         // Load version history
-        renderVersionHistory(prompt.versions);
+        renderVersionHistory(prompt.versions, prompt.user_access_level === 'edit');
         
         // Populate metadata tab
         populateMetadata(prompt);
@@ -797,7 +809,7 @@ function populateMetadata(prompt) {
     document.getElementById('metaTotalVersions').textContent = prompt.versions ? prompt.versions.length : 0;
 }
 
-function renderVersionHistory(versions) {
+function renderVersionHistory(versions, canEdit = false) {
     const container = document.getElementById('versionsList');
     
     if (!versions || versions.length === 0) {
@@ -842,15 +854,26 @@ function renderVersionHistory(versions) {
                         </span>
                     </div>
                 </div>
-                ${index < versions.length - 1 ? `
-                    <button onclick="viewDiff(${version.version_number}, ${versions[index + 1].version_number})" 
-                        class="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 border border-indigo-600 rounded-md transition-all">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                        </svg>
-                        Compare
-                    </button>
-                ` : ''}
+                <div class="flex gap-2">
+                    ${!isLatest && canEdit ? `
+                        <button onclick="restorePromptVersion(${version.prompt_id}, ${version.version_number})" 
+                            class="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-green-600 hover:text-white hover:bg-green-600 border border-green-600 rounded-md transition-all">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                            </svg>
+                            Restore
+                        </button>
+                    ` : ''}
+                    ${index < versions.length - 1 ? `
+                        <button onclick="viewDiff(${version.version_number}, ${versions[index + 1].version_number})" 
+                            class="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-indigo-600 hover:text-white hover:bg-indigo-600 border border-indigo-600 rounded-md transition-all">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                            </svg>
+                            Compare
+                        </button>
+                    ` : ''}
+                </div>
             </div>
         </div>
     `}).join('');
@@ -870,6 +893,35 @@ async function viewDiff(newVersion, oldVersion) {
     } catch (error) {
         console.error('Failed to generate diff:', error);
         alert('Failed to generate diff');
+    }
+}
+
+async function restorePromptVersion(promptId, versionNumber) {
+    if (!confirm(`Are you sure you want to restore to Version ${versionNumber}?\n\nThis will overwrite the current content and create a new version in the history.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('api/restore_version.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt_id: promptId, version_number: versionNumber })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('Prompt restored successfully');
+            // Refresh the prompt detail view
+            await viewPrompt(promptId);
+            // Refresh main prompt list
+            await loadPrompts();
+        } else {
+            showToast(result.error || 'Failed to restore prompt', 'error');
+        }
+    } catch (error) {
+        console.error('Failed to restore prompt:', error);
+        showToast('Failed to restore prompt', 'error');
     }
 }
 
@@ -1687,6 +1739,99 @@ async function handleEditUser(e) {
 // Close Edit User Modal
 function closeEditUserModal() {
     document.getElementById('editUserModal').classList.add('hidden');
+}
+
+// Open Add User Modal
+async function openAddUserModal() {
+    document.getElementById('addUserModal').classList.remove('hidden');
+    document.getElementById('addUserForm').reset();
+    
+    // Load roles and teams for the selects
+    await loadRolesForAddUser();
+    await loadTeamsForAddUser();
+}
+
+// Close Add User Modal
+function closeAddUserModal() {
+    document.getElementById('addUserModal').classList.add('hidden');
+}
+
+// Load Roles for Add User
+async function loadRolesForAddUser() {
+    try {
+        const response = await fetch('api/users.php');
+        const data = await response.json();
+        
+        // Get unique roles from users (or you could query a specific roles endpoint if it existed)
+        const roles = [...new Set(data.users.map(u => ({ id: u.role_id, name: u.role_name })))];
+        const uniqueRoles = roles.filter((role, index, self) => 
+            index === self.findIndex(r => r.id === role.id)
+        );
+        
+        const select = document.getElementById('addUserRole');
+        select.innerHTML = uniqueRoles.map(role => 
+            `<option value="${role.id}">${role.name}</option>`
+        ).join('');
+    } catch (error) {
+        console.error('Failed to load roles:', error);
+    }
+}
+
+// Load Teams for Add User
+async function loadTeamsForAddUser() {
+    try {
+        const response = await fetch('api/teams.php');
+        const teams = await response.json();
+        
+        const select = document.getElementById('addUserTeam');
+        select.innerHTML = '<option value="">No Team</option>' + 
+            teams.map(team => `<option value="${team.id}">${escapeHtml(team.name)}</option>`).join('');
+    } catch (error) {
+        console.error('Failed to load teams:', error);
+    }
+}
+
+// Handle Add User Submit
+async function handleAddUser(e) {
+    e.preventDefault();
+    
+    const username = document.getElementById('addUserUsername').value.trim();
+    const fullName = document.getElementById('addUserFullName').value.trim();
+    const password = document.getElementById('addUserPassword').value;
+    const roleId = document.getElementById('addUserRole').value;
+    const teamId = document.getElementById('addUserTeam').value;
+    
+    if (password.length < 6) {
+        showToast('Password must be at least 6 characters long', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('api/users.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username,
+                full_name: fullName,
+                password,
+                role_id: parseInt(roleId),
+                team_id: teamId ? parseInt(teamId) : null
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('User added successfully');
+            closeAddUserModal();
+            await loadUsers();
+        } else {
+            showToast(result.error || 'Failed to add user', 'error');
+        }
+    } catch (error) {
+        console.error('Failed to add user:', error);
+        showToast('Failed to add user', 'error');
+    }
 }
 
 // Load Teams

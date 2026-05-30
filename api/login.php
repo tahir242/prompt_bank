@@ -38,6 +38,7 @@ try {
             jsonResponse(['error' => 'Account is inactive. Please contact administrator.'], 403);
         }
         
+        session_set_cookie_params(['path' => '/']);
         session_start();
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['username'] = $user['username'];
